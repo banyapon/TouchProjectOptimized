@@ -6,37 +6,56 @@ using System;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
 
+public enum DogPaddleMode
+{
+    TwoFingerRotate,// 1 นิ้ว ลากเดิน, 2 นิ้ว หมุน (default)
+    OneFingerRotate // 1 นิ้ว ลากหมุน Realtime, Double Tap เดิน
+}
+
 public class DogPaddle : MonoBehaviour
 {
     [Header("References")]
-    public Camera vrCamera;                     // กล้องสำหรับ raycast
-    public LayerMask raycastLayers;             // Layer ที่ raycast ชนได้
+    public Camera vrCamera;     // กล้องสำหรับ raycast
+    public LayerMask raycastLayers; // Layer ที่ raycast ชนได้
+
+    [Header("Mode Settings")]
+    public Toggle modeToggle;   // Toggle UI สำหรับสลับโหมด
+    public DogPaddleMode currentMode = DogPaddleMode.TwoFingerRotate;
 
     [Header("Movement Settings")]
-    public Slider speedSlider;                   // Slider สำหรับปรับ baseSpeed
-    public float baseSpeed = 5f;                // ความเร็วพื้นฐาน
-    public float maxSpeed = 15f;                // ความเร็วสูงสุด (เมื่อ touch อยู่ล่างสุด)
-    public float maxRayDistance = 100f;         // ระยะ ray สูงสุด
-    public float arriveDistance = 0.1f;         // ระยะถือว่าถึงแล้ว
+    public Slider speedSlider;   // Slider สำหรับปรับ baseSpeed
+    public float baseSpeed = 5f;// ความเร็วพื้นฐาน
+    public float maxSpeed = 15f;// ความเร็วสูงสุด (เมื่อ touch อยู่ล่างสุด)
+    public float maxRayDistance = 100f; // ระยะ ray สูงสุด
+    public float arriveDistance = 0.1f; // ระยะถือว่าถึงแล้ว
 
     [Header("Rotation Settings")]
-    public float rotationSpeed = 5f;            // ความเร็วหมุน
+    public float rotationSpeed = 5f;// ความเร็วหมุน
     public bool invertTwoFingerRotation = true; // กลับทิศหมุน
-    public bool allowPitch = false;             // อนุญาตให้เงย/ก้ม
+    public bool allowPitch = false; // อนุญาตให้เงย/ก้ม
     public float pitchMin = -60f;
     public float pitchMax = 60f;
+    public float dragThreshold = 10f;   // ระยะลากขั้นต่ำก่อนเริ่มหมุน
+
+    [Header("Double Tap Settings")]
+    public float doubleTapMaxInterval = 0.3f;   // เวลาสูงสุดระหว่าง tap (วินาที)
+    public float tapDragThreshold = 20f;// ระยะ pixel ที่ถือว่าเป็น tap ไม่ใช่ drag
+
+    [Header("Swipe Strafe Settings")]
+    public float swipeMoveDistance = 0.6f;   // ระยะเคลื่อนที่ซ้าย/ขวาต่อ swipe
+    public float swipeMinPixels = 50f;   // ระยะ pixel ขั้นต่ำ horizontal ที่ถือว่าเป็น swipe
 
     [Header("Touch Surface Settings")]
-    public float fallbackDpi = 160f;            // DPI สำรองกรณี Screen.dpi คืนค่า 0
-    public float holdThreshold = 5f;             // ระยะ pixel ที่ถือว่า "กดค้าง" ไม่ใช่ drag
-    public float holdTimeThreshold = 0.2f;       // เวลา (วินาที) ที่ต้องนิ่งถึงจะถือว่ากดค้าง
+    public float fallbackDpi = 160f;// DPI สำรองกรณี Screen.dpi คืนค่า 0
+    public float holdThreshold = 5f; // ระยะ pixel ที่ถือว่า "กดค้าง" ไม่ใช่ drag
+    public float holdTimeThreshold = 0.2f;   // เวลา (วินาที) ที่ต้องนิ่งถึงจะถือว่ากดค้าง
 
     [Header("Swipe Detection (cm/s - DPI-based)")]
     public float swipeVelocityThresholdCm = 12f;  // ความเร็วขั้นต่ำที่ถือว่าเป็น Swipe (cm/sec)
-    public float swipeMaxDuration = 0.4f;         // เวลาสูงสุดที่ถือว่าเป็น Swipe (วินาที)
-    public float swipeMinDistanceCm = 1.5f;       // ระยะลากขั้นต่ำที่ถือว่าเป็น Swipe (cm)
+    public float swipeMaxDuration = 0.4f; // เวลาสูงสุดที่ถือว่าเป็น Swipe (วินาที)
+    public float swipeMinDistanceCm = 1.5f;   // ระยะลากขั้นต่ำที่ถือว่าเป็น Swipe (cm)
 
-    // Movement state
+// Movement state
     private Vector3 originalPosition;
     private Vector3 targetPosition;
     private float targetDistance;
@@ -45,25 +64,25 @@ public class DogPaddle : MonoBehaviour
     private Coroutine moveRoutine;
     private float touchStartY;
 
-    // Touch distance tracking
+// Touch distance tracking
     private Vector2 touchStartPosition;
     private Vector2 totalDragPixels;
     private float totalDragDistanceCm;
     private Vector2 dragDistanceCm;
 
-    // Hold detection
+// Hold detection
     private bool isHolding = false;
     private float holdTimer = 0f;
     private Vector2 lastMovePosition;
 
-    // Swipe/Drag detection (1 finger)
+// Swipe/Drag detection (1 finger)
     private float touchStartTime;
     private float currentTouchVelocityCm;
     private string oneFingerGestureState = "None";
     private Vector2 swipeDirection;
     private string oneFingerSwipeZone = "None";
 
-    // Swipe/Drag detection (2 fingers)
+// Swipe/Drag detection (2 fingers)
     private float twoFingerStartTime;
     private Vector2 twoFingerStartMidpoint;
     private float twoFingerVelocityCm;
@@ -71,26 +90,51 @@ public class DogPaddle : MonoBehaviour
     private Vector2 twoFingerSwipeDirection;
     private string twoFingerSwipeZone = "None";
 
-    // UI touch blocking
+// UI touch blocking
     private bool touchStartedOnUI = false;
 
-    // Rotation state
+// Rotation state
     private bool isRotating = false;
     private Vector2 previousTouchMidpoint;
 
+// Double Tap Detection (OneFingerRotate mode)
+    private float lastTapTime = -1f;
+    private Vector2 lastTapPosition;
+
+// One-finger rotation (OneFingerRotate mode)
+    private bool isOneFingerRotating = false;
+    private Vector2 previousOneFingerPosition;
+
     void Start()
     {
-        // เชื่อม Slider กับ baseSpeed
+// เชื่อม Slider กับ baseSpeed
         if (speedSlider != null)
         {
             speedSlider.value = baseSpeed;
             speedSlider.onValueChanged.AddListener(OnSpeedSliderChanged);
+        }
+
+// เชื่อม Toggle กับโหมด
+        if (modeToggle != null)
+        {
+            modeToggle.isOn = (currentMode == DogPaddleMode.OneFingerRotate);
+            modeToggle.onValueChanged.AddListener(OnModeToggleChanged);
         }
     }
 
     void OnSpeedSliderChanged(float value)
     {
         baseSpeed = value;
+    }
+
+    void OnModeToggleChanged(bool isOn)
+    {
+        currentMode = isOn ? DogPaddleMode.OneFingerRotate : DogPaddleMode.TwoFingerRotate;
+// Reset state เมื่อสลับโหมด
+        isOneFingerRotating = false;
+        isRotating = false;
+        isDragging = false;
+        lastTapTime = -1f;
     }
 
     void Update()
@@ -106,16 +150,16 @@ public class DogPaddle : MonoBehaviour
 
     void HandleTouchInput()
     {
-        // บล็อค touch ทั้งหมดเมื่อ debug panel เปิด
+// บล็อค touch ทั้งหมดเมื่อ debug panel เปิด
         if (UIDebugClass.Instance != null && UIDebugClass.Instance.IsDebugActive)
             return;
 
-        // === 1 นิ้ว: เคลื่อนที่ไปปลายทาง ===
+// === 1 นิ้ว ===
         if (Input.touchCount == 1 && !isRotating)
         {
             Touch touch = Input.GetTouch(0);
 
-            // ไม่ทำงานเมื่อแตะบน UI (track ตลอด touch sequence)
+// ไม่ทำงานเมื่อแตะบน UI (track ตลอด touch sequence)
             if (touch.phase == TouchPhase.Began)
                 touchStartedOnUI = IsTouchOverUI(touch.fingerId);
 
@@ -126,39 +170,63 @@ public class DogPaddle : MonoBehaviour
                 return;
             }
 
-            // Log ผ่าน LogDataClass
+// Log ผ่าน LogDataClass
             if (LogDataClass.Instance != null)
                 LogDataClass.Instance.LogTouch("dogpaddle", touch);
 
-            switch (touch.phase)
+            if (currentMode == DogPaddleMode.TwoFingerRotate)
             {
-                case TouchPhase.Began:
-                    OnOneTouchBegan(touch);
-                    break;
-                case TouchPhase.Moved:
-                    OnOneTouchMoved(touch);
-                    break;
-                case TouchPhase.Stationary:
-                    OnOneTouchStationary(touch);
-                    break;
-                case TouchPhase.Ended:
-                case TouchPhase.Canceled:
-                    OnOneTouchEnded(touch);
-                    break;
+// โหมดเดิม: 1 นิ้ว ลากเดิน
+                switch (touch.phase)
+                {
+                    case TouchPhase.Began:
+                        OnOneTouchBegan(touch);
+                        break;
+                    case TouchPhase.Moved:
+                        OnOneTouchMoved(touch);
+                        break;
+                    case TouchPhase.Stationary:
+                        OnOneTouchStationary(touch);
+                        break;
+                    case TouchPhase.Ended:
+                    case TouchPhase.Canceled:
+                        OnOneTouchEnded(touch);
+                        break;
+                }
+            }
+            else
+            {
+// โหมดใหม่: 1 นิ้ว ลากหมุน + Double Tap เดิน (ไม่เคลื่อนที่ขณะ swipe)
+                switch (touch.phase)
+                {
+                    case TouchPhase.Began:
+                        OnOneTouchBegan_OneFingerRotateMode(touch);
+                        break;
+                    case TouchPhase.Moved:
+                        OnOneTouchMoved_OneFingerRotateMode(touch);
+                        break;
+                    case TouchPhase.Stationary:
+                        break;
+                    case TouchPhase.Ended:
+                    case TouchPhase.Canceled:
+                        OnOneTouchEnded_OneFingerRotateMode(touch);
+                        break;
+                }
             }
         }
-        // === 2 นิ้ว: หมุน ===
-        else if (Input.touchCount == 2)
+// === 2 นิ้ว: หมุน (เฉพาะ TwoFingerRotate mode) ===
+        else if (Input.touchCount == 2 && currentMode == DogPaddleMode.TwoFingerRotate)
         {
             HandleTwoFingerRotation();
         }
         else
         {
             isRotating = false;
+            isOneFingerRotating = false;
         }
     }
 
-    // === 1 Finger: Began ===
+// === 1 Finger: Began ===
     void OnOneTouchBegan(Touch touch)
     {
         originalPosition = transform.position;
@@ -169,7 +237,7 @@ public class DogPaddle : MonoBehaviour
         isDragging = true;
         hasValidTarget = false;
 
-        // Reset touch tracking
+// Reset touch tracking
         totalDragPixels = Vector2.zero;
         totalDragDistanceCm = 0f;
         dragDistanceCm = Vector2.zero;
@@ -183,21 +251,21 @@ public class DogPaddle : MonoBehaviour
         UpdateRaycastTarget();
     }
 
-    // === 1 Finger: Moved ===
+// === 1 Finger: Moved ===
     void OnOneTouchMoved(Touch touch)
     {
-        // คำนวณระยะ drag เป็น cm
+// คำนวณระยะ drag เป็น cm
         Vector2 currentDragPixels = touch.position - touchStartPosition;
         totalDragPixels = currentDragPixels;
 
         dragDistanceCm = PixelsToCm(currentDragPixels);
         totalDragDistanceCm = dragDistanceCm.magnitude;
 
-        // คำนวณ Velocity (cm/sec)
+// คำนวณ Velocity (cm/sec)
         float elapsed = Time.time - touchStartTime;
         currentTouchVelocityCm = elapsed > 0f ? totalDragDistanceCm / elapsed : 0f;
 
-        // ตรวจสอบ Hold
+// ตรวจสอบ Hold
         float moveDelta = touch.deltaPosition.magnitude;
         if (moveDelta < holdThreshold)
         {
@@ -222,13 +290,18 @@ public class DogPaddle : MonoBehaviour
 
         UpdateGestureDebugUI();
 
-        // ถ้ากดค้าง ไม่เคลื่อนที่
+// ถ้ากดค้าง ไม่เคลื่อนที่
         if (isHolding)
         {
             if (LogDataClass.Instance != null)
                 LogDataClass.Instance.LogMovement("dogpaddle", transform.position, 0f, "Hold");
             return;
         }
+
+// ถ้า drag แนว horizontal มากกว่า vertical ให้ ไม่เดินหน้า/ถอยหลัง (รอ swipe strafe ตอน ended)
+        Vector2 overallDelta = touch.position - touchStartPosition;
+        if (Mathf.Abs(overallDelta.x) > Mathf.Abs(overallDelta.y))
+            return;
 
         if (isDragging && hasValidTarget)
         {
@@ -257,13 +330,13 @@ public class DogPaddle : MonoBehaviour
                 transform.Translate(-forwardDirection * currentSpeed * Time.deltaTime, Space.World);
             }
 
-            // Log movement
+// Log movement
             if (LogDataClass.Instance != null)
                 LogDataClass.Instance.LogMovement("dogpaddle", transform.position, currentSpeed, oneFingerGestureState);
         }
     }
 
-    // === 1 Finger: Stationary ===
+// === 1 Finger: Stationary ===
     void OnOneTouchStationary(Touch touch)
     {
         holdTimer += Time.deltaTime;
@@ -272,7 +345,7 @@ public class DogPaddle : MonoBehaviour
         UpdateGestureDebugUI();
     }
 
-    // === 1 Finger: Ended / Canceled ===
+// === 1 Finger: Ended / Canceled ===
     void OnOneTouchEnded(Touch touch)
     {
         float totalElapsed = Time.time - touchStartTime;
@@ -284,6 +357,8 @@ public class DogPaddle : MonoBehaviour
         if (finalVelocityCm >= swipeVelocityThresholdCm)
         {
             oneFingerGestureState = "Swipe";
+// ตรวจ swipe ซ้าย/ขวา ให้ เคลื่อนที่ด้านข้าง
+            TrySwipeStrafe(touch.position);
         }
         else if (isHolding)
         {
@@ -301,7 +376,162 @@ public class DogPaddle : MonoBehaviour
         UpdateGestureDebugUI();
     }
 
-    // === 2 Fingers: Rotation (โครงสร้างเดียวกับ DragnGo, StreetView) ===
+// ============================================================
+// === OneFingerRotate Mode: 1 Finger handlers (ใหม่) ===
+// ============================================================
+
+    void OnOneTouchBegan_OneFingerRotateMode(Touch touch)
+    {
+        touchStartPosition = touch.position;
+        previousOneFingerPosition = touch.position;
+        isOneFingerRotating = false;
+        touchStartTime = Time.time;
+
+// ยัง track gesture สำหรับ debug
+        oneFingerGestureState = "Touching";
+        oneFingerSwipeZone = GetScreenZone(touch.position.x);
+        totalDragPixels = Vector2.zero;
+        totalDragDistanceCm = 0f;
+        dragDistanceCm = Vector2.zero;
+        currentTouchVelocityCm = 0f;
+
+        UpdateGestureDebugUI();
+    }
+
+    void OnOneTouchMoved_OneFingerRotateMode(Touch touch)
+    {
+// คำนวณ gesture tracking (ไม่เคลื่อนที่)
+        Vector2 currentDragPixels = touch.position - touchStartPosition;
+        totalDragPixels = currentDragPixels;
+        dragDistanceCm = PixelsToCm(currentDragPixels);
+        totalDragDistanceCm = dragDistanceCm.magnitude;
+
+        float elapsed = Time.time - touchStartTime;
+        currentTouchVelocityCm = elapsed > 0f ? totalDragDistanceCm / elapsed : 0f;
+
+        if (currentTouchVelocityCm >= swipeVelocityThresholdCm)
+            oneFingerGestureState = "Swipe";
+        else
+            oneFingerGestureState = "Drag";
+
+        UpdateGestureDebugUI();
+
+// ตรวจว่าลากเกิน threshold ให้ เริ่มหมุน (ไม่เคลื่อนที่)
+        float dragDistance = Vector2.Distance(touch.position, touchStartPosition);
+        if (dragDistance > dragThreshold || isOneFingerRotating)
+        {
+            isOneFingerRotating = true;
+
+            Vector2 delta = touch.position - previousOneFingerPosition;
+
+// หมุนซ้าย-ขวา (Yaw)
+            float rotationSign = invertTwoFingerRotation ? -1f : 1f;
+            float yawDelta = delta.x * rotationSpeed * 0.05f * rotationSign;
+            transform.Rotate(Vector3.up, yawDelta, Space.World);
+
+// หมุนเงย-ก้ม (Pitch)
+            if (allowPitch && vrCamera != null)
+            {
+                float pitchDelta = -delta.y * rotationSpeed * 0.05f;
+                Vector3 currentRotation = vrCamera.transform.localEulerAngles;
+                float newPitch = currentRotation.x + pitchDelta;
+                if (newPitch > 180f) newPitch -= 360f;
+                newPitch = Mathf.Clamp(newPitch, pitchMin, pitchMax);
+                vrCamera.transform.localEulerAngles = new Vector3(newPitch, currentRotation.y, currentRotation.z);
+            }
+
+            previousOneFingerPosition = touch.position;
+        }
+    }
+
+    void OnOneTouchEnded_OneFingerRotateMode(Touch touch)
+    {
+// Gesture tracking
+        float totalElapsed = Time.time - touchStartTime;
+        Vector2 finalDragCm = PixelsToCm(touch.position - touchStartPosition);
+        float finalDistanceCm = finalDragCm.magnitude;
+        float finalVelocityCm = totalElapsed > 0f ? finalDistanceCm / totalElapsed : 0f;
+
+        if (finalVelocityCm >= swipeVelocityThresholdCm)
+            oneFingerGestureState = "Swipe";
+        else if (!isOneFingerRotating)
+            oneFingerGestureState = "Tap";
+        else
+            oneFingerGestureState = "Drag";
+
+        UpdateGestureDebugUI();
+
+// ถ้าไม่ได้ลาก (tap) ให้ ตรวจ Double Tap
+        float dragDistance = Vector2.Distance(touch.position, touchStartPosition);
+        if (dragDistance <= tapDragThreshold && !isOneFingerRotating)
+        {
+            float currentTime = Time.unscaledTime;
+            if (lastTapTime > 0f && (currentTime - lastTapTime) <= doubleTapMaxInterval)
+            {
+// Double Tap ให้ เดินไปข้างหน้า
+                originalPosition = transform.position;
+                UpdateRaycastTarget();
+                if (hasValidTarget)
+                {
+                    StopMoveRoutine();
+                    moveRoutine = StartCoroutine(MoveToTargetRoutine());
+
+                    if (LogDataClass.Instance != null)
+                        LogDataClass.Instance.LogMovement("dogpaddle", targetPosition, baseSpeed, "DoubleTap");
+                }
+                lastTapTime = -1f;
+            }
+            else
+            {
+                lastTapTime = currentTime;
+                lastTapPosition = touch.position;
+            }
+        }
+        else
+        {
+// ลากหมุน/swipe ให้ ตรวจ swipe ซ้าย/ขวา
+            TrySwipeStrafe(touch.position);
+            lastTapTime = -1f;
+        }
+
+        isOneFingerRotating = false;
+    }
+
+// === Swipe Strafe: ตรวจ swipe ซ้าย/ขวา แล้วเคลื่อนที่ด้านข้าง ===
+    bool TrySwipeStrafe(Vector2 touchEndPosition)
+    {
+        float duration = Time.time - touchStartTime;
+        if (duration > swipeMaxDuration) return false;
+
+        Vector2 delta = touchEndPosition - touchStartPosition;
+        if (Mathf.Abs(delta.x) < swipeMinPixels) return false;
+        if (Mathf.Abs(delta.x) <= Mathf.Abs(delta.y)) return false; // ไม่ใช่ horizontal
+
+        float dir = delta.x > 0 ? 1f : -1f;
+        transform.position += transform.right * dir * swipeMoveDistance;
+
+        if (LogDataClass.Instance != null)
+            LogDataClass.Instance.LogMovement("dogpaddle", transform.position, 0f, dir > 0 ? "SwipeRight" : "SwipeLeft");
+
+        return true;
+    }
+
+    IEnumerator MoveToTargetRoutine()
+    {
+        while (Vector3.Distance(transform.position, targetPosition) > arriveDistance)
+        {
+            transform.position = Vector3.MoveTowards(
+                transform.position,
+                targetPosition,
+                baseSpeed * Time.deltaTime
+            );
+            yield return null;
+        }
+        transform.position = targetPosition;
+        moveRoutine = null;
+    }
+
+// === 2 Fingers: Rotation (โครงสร้างเดียวกับ DragnGo, StreetView) ===
     void HandleTwoFingerRotation()
     {
         isDragging = false;
@@ -337,19 +567,19 @@ public class DogPaddle : MonoBehaviour
         {
             Vector2 deltaMidpoint = currentMidpoint - previousTouchMidpoint;
 
-            // คำนวณ Velocity 2 นิ้ว
+// คำนวณ Velocity 2 นิ้ว
             float elapsed2F = Time.time - twoFingerStartTime;
             Vector2 dist2FCm = PixelsToCm(currentMidpoint - twoFingerStartMidpoint);
             twoFingerVelocityCm = elapsed2F > 0f ? dist2FCm.magnitude / elapsed2F : 0f;
 
             twoFingerGestureState = twoFingerVelocityCm >= swipeVelocityThresholdCm ? "Swipe" : "Drag";
 
-            // หมุนซ้าย-ขวา (Yaw)
+// หมุนซ้าย-ขวา (Yaw)
             float rotationSign = invertTwoFingerRotation ? -1f : 1f;
             float yawDelta = deltaMidpoint.x * rotationSpeed * 0.05f * rotationSign;
             transform.Rotate(Vector3.up, yawDelta, Space.World);
 
-            // หมุนเงย-ก้ม (Pitch)
+// หมุนเงย-ก้ม (Pitch)
             if (allowPitch && vrCamera != null)
             {
                 float pitchDelta = -deltaMidpoint.y * rotationSpeed * 0.05f;
@@ -406,7 +636,7 @@ public class DogPaddle : MonoBehaviour
         }
     }
 
-    // แปลง pixels เป็น cm โดยใช้ Screen.dpi
+// แปลง pixels เป็น cm โดยใช้ Screen.dpi
     Vector2 PixelsToCm(Vector2 pixels)
     {
         float dpi = Screen.dpi > 0 ? Screen.dpi : fallbackDpi;
@@ -414,7 +644,7 @@ public class DogPaddle : MonoBehaviour
         return new Vector2(pixels.x * cmPerPixel, pixels.y * cmPerPixel);
     }
 
-    // แบ่งหน้าจอเป็น 3 โซน
+// แบ่งหน้าจอเป็น 3 โซน
     string GetScreenZone(float screenX)
     {
         float oneThird = Screen.width / 3f;
@@ -423,7 +653,7 @@ public class DogPaddle : MonoBehaviour
         else return "Right";
     }
 
-    // อัพเดท Gesture Debug UI ผ่าน UIDebugClass
+// อัพเดท Gesture Debug UI ผ่าน UIDebugClass
     void UpdateGestureDebugUI()
     {
         if (UIDebugClass.Instance == null) return;
@@ -447,7 +677,7 @@ public class DogPaddle : MonoBehaviour
         UIDebugClass.Instance.SetGestureLog(info);
     }
 
-    // Public getters
+// Public getters
     public Vector2 GetDragDistanceCm() => dragDistanceCm;
     public float GetTotalDragDistanceCm() => totalDragDistanceCm;
     public bool IsHolding() => isHolding;

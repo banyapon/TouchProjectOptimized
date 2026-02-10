@@ -4,6 +4,12 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
 
+public enum DragnGoMode
+{
+    TwoFingerRotate,    // 1 นิ้ว ลากเดิน, 2 นิ้ว หมุน (default)
+    OneFingerRotate     // 1 นิ้ว ลากหมุน Realtime, Double Tap เดิน
+}
+
 public class DragnGo : MonoBehaviour
 {
     [Header("References")]
@@ -11,6 +17,10 @@ public class DragnGo : MonoBehaviour
     public Camera vrCamera;                  // Camera used for raycast direction
     public LineRenderer laserPointer;        // Visual line for the ray
     public LayerMask raycastLayers;          // Layers the ray can hit
+
+    [Header("Mode Settings")]
+    public Toggle modeToggle;                // Toggle UI สำหรับสลับโหมด
+    public DragnGoMode currentMode = DragnGoMode.TwoFingerRotate;
 
     [Header("Movement Settings")]
     public Slider speedSlider;               // Slider สำหรับปรับ moveSpeed
@@ -25,6 +35,16 @@ public class DragnGo : MonoBehaviour
     public bool allowPitch = false;          // Allow up/down rotation during two-finger gesture
     public float pitchMin = -60f;
     public float pitchMax = 60f;
+    public float dragThreshold = 10f;        // ระยะลากขั้นต่ำก่อนเริ่มหมุน
+
+    [Header("Double Tap Settings")]
+    public float doubleTapMaxInterval = 0.3f;  // เวลาสูงสุดระหว่าง tap (วินาที)
+    public float tapDragThreshold = 20f;       // ระยะ pixel ที่ถือว่าเป็น tap ไม่ใช่ drag
+
+    [Header("Swipe Strafe Settings")]
+    public float swipeMoveDistance = 0.6f;       // ระยะเคลื่อนที่ซ้าย/ขวาต่อ swipe
+    public float swipeMinPixels = 50f;           // ระยะ pixel ขั้นต่ำ horizontal ที่ถือว่าเป็น swipe
+    public float swipeMaxDuration = 0.4f;        // เวลาสูงสุดที่ถือว่าเป็น swipe (วินาที)
 
     [Header("Hit Circle Settings")]
     public float hitCircleRadius = 0.3f;     // รัศมีของ circle ที่จุดกระทบ
@@ -49,6 +69,16 @@ public class DragnGo : MonoBehaviour
     private Quaternion targetRotation;
     private bool smoothRotation = false;
 
+    // Double Tap Detection (OneFingerRotate mode)
+    private float lastTapTime = -1f;
+    private Vector2 lastTapPosition;
+    private Vector2 touchStartPosition;
+    private float touchStartTime;
+
+    // One-finger rotation (OneFingerRotate mode)
+    private bool isOneFingerRotating = false;
+    private Vector2 previousOneFingerPosition;
+
     // Hit circle
     private GameObject hitCircle;
     private LineRenderer circleRenderer;
@@ -60,6 +90,13 @@ public class DragnGo : MonoBehaviour
         {
             speedSlider.value = moveSpeed;
             speedSlider.onValueChanged.AddListener(OnSpeedSliderChanged);
+        }
+
+        // เชื่อม Toggle กับโหมด
+        if (modeToggle != null)
+        {
+            modeToggle.isOn = (currentMode == DragnGoMode.OneFingerRotate);
+            modeToggle.onValueChanged.AddListener(OnModeToggleChanged);
         }
 
         // ลดความกว้างของ LineRenderer
@@ -85,6 +122,16 @@ public class DragnGo : MonoBehaviour
     void OnSpeedSliderChanged(float value)
     {
         moveSpeed = value;
+    }
+
+    void OnModeToggleChanged(bool isOn)
+    {
+        currentMode = isOn ? DragnGoMode.OneFingerRotate : DragnGoMode.TwoFingerRotate;
+        // Reset state เมื่อสลับโหมด
+        isOneFingerRotating = false;
+        isRotating = false;
+        isDragging = false;
+        lastTapTime = -1f;
     }
 
     void CreateHitCircle()
@@ -131,7 +178,7 @@ public class DragnGo : MonoBehaviour
         if (UIDebugClass.Instance != null && UIDebugClass.Instance.IsDebugActive)
             return;
 
-        // === 1 นิ้ว: เคลื่อนที่ ===
+        // === 1 นิ้ว ===
         if (Input.touchCount == 1 && !isRotating)
         {
             Touch touch = Input.GetTouch(0);
@@ -151,29 +198,52 @@ public class DragnGo : MonoBehaviour
             if (LogDataClass.Instance != null)
                 LogDataClass.Instance.LogTouch("dragngo", touch);
 
-            switch (touch.phase)
+            if (currentMode == DragnGoMode.TwoFingerRotate)
             {
-                case TouchPhase.Began:
-                    OnOneTouchBegan(touch);
-                    break;
-                case TouchPhase.Moved:
-                case TouchPhase.Stationary:
-                    OnOneTouchMovedOrStationary(touch);
-                    break;
-                case TouchPhase.Ended:
-                case TouchPhase.Canceled:
-                    OnOneTouchEnded(touch);
-                    break;
+                // โหมดเดิม: 1 นิ้ว ลากเดิน
+                switch (touch.phase)
+                {
+                    case TouchPhase.Began:
+                        OnOneTouchBegan(touch);
+                        break;
+                    case TouchPhase.Moved:
+                    case TouchPhase.Stationary:
+                        OnOneTouchMovedOrStationary(touch);
+                        break;
+                    case TouchPhase.Ended:
+                    case TouchPhase.Canceled:
+                        OnOneTouchEnded(touch);
+                        break;
+                }
+            }
+            else
+            {
+                // โหมดใหม่: 1 นิ้ว ลากหมุน + Double Tap เดิน (ไม่เคลื่อนที่ขณะ swipe)
+                switch (touch.phase)
+                {
+                    case TouchPhase.Began:
+                        OnOneTouchBegan_OneFingerRotateMode(touch);
+                        break;
+                    case TouchPhase.Moved:
+                    case TouchPhase.Stationary:
+                        OnOneTouchMoved_OneFingerRotateMode(touch);
+                        break;
+                    case TouchPhase.Ended:
+                    case TouchPhase.Canceled:
+                        OnOneTouchEnded_OneFingerRotateMode(touch);
+                        break;
+                }
             }
         }
-        // === 2 นิ้ว: หมุน ===
-        else if (Input.touchCount == 2)
+        // === 2 นิ้ว: หมุน (เฉพาะ TwoFingerRotate mode) ===
+        else if (Input.touchCount == 2 && currentMode == DragnGoMode.TwoFingerRotate)
         {
             HandleTwoFingerRotation();
         }
         else
         {
             isRotating = false;
+            isOneFingerRotating = false;
         }
     }
 
@@ -218,6 +288,109 @@ public class DragnGo : MonoBehaviour
     void OnOneTouchEnded(Touch touch)
     {
         isDragging = false;
+    }
+
+    // ============================================================
+    // === OneFingerRotate Mode: 1 Finger handlers (ใหม่) ===
+    // ============================================================
+
+    void OnOneTouchBegan_OneFingerRotateMode(Touch touch)
+    {
+        touchStartPosition = touch.position;
+        touchStartTime = Time.unscaledTime;
+        previousOneFingerPosition = touch.position;
+        isOneFingerRotating = false;
+    }
+
+    void OnOneTouchMoved_OneFingerRotateMode(Touch touch)
+    {
+        // ตรวจว่าลากเกิน threshold → เริ่มหมุน (ไม่เคลื่อนที่เลย)
+        float dragDistance = Vector2.Distance(touch.position, touchStartPosition);
+        if (dragDistance > dragThreshold || isOneFingerRotating)
+        {
+            isOneFingerRotating = true;
+
+            Vector2 delta = touch.position - previousOneFingerPosition;
+
+            // หมุนซ้าย-ขวา (Yaw)
+            float rotationSign = invertTwoFingerRotation ? -1f : 1f;
+            float yawDelta = delta.x * rotationSpeed * 0.05f * rotationSign;
+            player.Rotate(Vector3.up, yawDelta, Space.World);
+
+            // หมุนเงย-ก้ม (Pitch)
+            if (allowPitch && vrCamera != null)
+            {
+                float pitchDelta = -delta.y * rotationSpeed * 0.05f;
+                Vector3 currentRotation = vrCamera.transform.localEulerAngles;
+                float newPitch = currentRotation.x + pitchDelta;
+                if (newPitch > 180f) newPitch -= 360f;
+                newPitch = Mathf.Clamp(newPitch, pitchMin, pitchMax);
+                vrCamera.transform.localEulerAngles = new Vector3(newPitch, currentRotation.y, currentRotation.z);
+            }
+
+            previousOneFingerPosition = touch.position;
+        }
+    }
+
+    void OnOneTouchEnded_OneFingerRotateMode(Touch touch)
+    {
+        // ถ้าไม่ได้ลาก (tap) → ตรวจ Double Tap
+        float dragDistance = Vector2.Distance(touch.position, touchStartPosition);
+        if (dragDistance <= tapDragThreshold && !isOneFingerRotating)
+        {
+            float currentTime = Time.unscaledTime;
+            if (lastTapTime > 0f && (currentTime - lastTapTime) <= doubleTapMaxInterval)
+            {
+                // Double Tap → เดินไปตาม raycast
+                originalVEPosition = player.position;
+                if (UpdateDragRaycast())
+                {
+                    float effectiveDistance = Mathf.Max(0f, currentHitDistance - stopBeforeEnd);
+                    Vector3 direction = (raycastTarget - originalVEPosition).normalized;
+                    Vector3 targetPos = originalVEPosition + direction * effectiveDistance;
+                    targetPos.y = originalVEPosition.y;
+
+                    StartMoveToPosition(targetPos);
+
+                    if (LogDataClass.Instance != null)
+                        LogDataClass.Instance.LogMovement("dragngo", targetPos, moveSpeed, "DoubleTap");
+                }
+                lastTapTime = -1f;
+            }
+            else
+            {
+                lastTapTime = currentTime;
+                lastTapPosition = touch.position;
+            }
+        }
+        else
+        {
+            // ลากหมุน/swipe → ตรวจ swipe ซ้าย/ขวา
+            TrySwipeStrafe(touch.position);
+            lastTapTime = -1f;
+        }
+
+        isOneFingerRotating = false;
+        isDragging = false;
+    }
+
+    // === Swipe Strafe: ตรวจ swipe ซ้าย/ขวา แล้วเคลื่อนที่ด้านข้าง ===
+    bool TrySwipeStrafe(Vector2 touchEndPosition)
+    {
+        float duration = Time.unscaledTime - touchStartTime;
+        if (duration > swipeMaxDuration) return false;
+
+        Vector2 delta = touchEndPosition - touchStartPosition;
+        if (Mathf.Abs(delta.x) < swipeMinPixels) return false;
+        if (Mathf.Abs(delta.x) <= Mathf.Abs(delta.y)) return false; // ไม่ใช่ horizontal
+
+        float dir = delta.x > 0 ? 1f : -1f;
+        player.position += player.right * dir * swipeMoveDistance;
+
+        if (LogDataClass.Instance != null)
+            LogDataClass.Instance.LogMovement("dragngo", player.position, 0f, dir > 0 ? "SwipeRight" : "SwipeLeft");
+
+        return true;
     }
 
     // === 2 Fingers: Rotation (โครงสร้างเดียวกับ DogPaddle, StreetView) ===

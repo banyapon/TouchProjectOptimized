@@ -39,6 +39,11 @@ public class StreetView : MonoBehaviour
     [Header("Double Tap Settings")]
     public float doubleTapMaxInterval = 0.3f;   // เวลาสูงสุดระหว่าง tap สอง tap (วินาที)
 
+    [Header("Swipe Strafe Settings")]
+    public float swipeMoveDistance = 0.6f;       // ระยะเคลื่อนที่ซ้าย/ขวาต่อ swipe
+    public float swipeMinPixels = 50f;           // ระยะ pixel ขั้นต่ำ horizontal ที่ถือว่าเป็น swipe
+    public float swipeMaxDuration = 0.4f;        // เวลาสูงสุดที่ถือว่าเป็น swipe (วินาที)
+
     [Header("Cursor Settings")]
     public bool showCursor = true;
     public float cursorRadius = 0.3f;
@@ -62,6 +67,7 @@ public class StreetView : MonoBehaviour
 
     // Touch
     private Vector2 touchStartPosition;
+    private float touchStartTime;
 
     // Single Tap Detection (Street View style)
     private float tapDragThreshold = 20f;
@@ -251,6 +257,7 @@ public class StreetView : MonoBehaviour
     void OnOneTouchBegan(Touch touch)
     {
         touchStartPosition = touch.position;
+        touchStartTime = Time.unscaledTime;
         isRotating = false;
 
         PerformRaycastFromScreenPosition(touch.position);
@@ -269,6 +276,11 @@ public class StreetView : MonoBehaviour
         {
             StartMovement(touch.position);
         }
+        else
+        {
+            // ตรวจ swipe ซ้าย/ขวา → เคลื่อนที่ด้านข้าง
+            TrySwipeStrafe(touch.position);
+        }
     }
 
     // ============================================================
@@ -278,6 +290,7 @@ public class StreetView : MonoBehaviour
     void OnOneTouchBegan_OneFingerRotateMode(Touch touch)
     {
         touchStartPosition = touch.position;
+        touchStartTime = Time.unscaledTime;
         previousOneFingerPosition = touch.position;
         isOneFingerRotating = false;
 
@@ -338,7 +351,8 @@ public class StreetView : MonoBehaviour
         }
         else
         {
-            // ลากหมุน → ไม่นับเป็น tap
+            // ลากหมุน/swipe → ตรวจ swipe ซ้าย/ขวา
+            TrySwipeStrafe(touch.position);
             lastTapTime = -1f;
         }
 
@@ -395,6 +409,25 @@ public class StreetView : MonoBehaviour
                 previousTouchMidpoint = currentMidpoint;
             }
         }
+    }
+
+    // === Swipe Strafe: ตรวจ swipe ซ้าย/ขวา แล้วเคลื่อนที่ด้านข้าง ===
+    bool TrySwipeStrafe(Vector2 touchEndPosition)
+    {
+        float duration = Time.unscaledTime - touchStartTime;
+        if (duration > swipeMaxDuration) return false;
+
+        Vector2 delta = touchEndPosition - touchStartPosition;
+        if (Mathf.Abs(delta.x) < swipeMinPixels) return false;
+        if (Mathf.Abs(delta.x) <= Mathf.Abs(delta.y)) return false; // ไม่ใช่ horizontal
+
+        float dir = delta.x > 0 ? 1f : -1f;
+        player.position += player.right * dir * swipeMoveDistance;
+
+        if (LogDataClass.Instance != null)
+            LogDataClass.Instance.LogMovement("streetview", player.position, 0f, dir > 0 ? "SwipeRight" : "SwipeLeft");
+
+        return true;
     }
 
     void PerformRaycastFromScreenPosition(Vector2 screenPosition)
