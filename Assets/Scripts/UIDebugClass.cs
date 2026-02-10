@@ -11,13 +11,14 @@ public class UIDebugClass : MonoBehaviour
     public TMP_Text gestureLogText;     // แสดง gesture state (Hold/Drag/Swipe)
 
     [Header("UI Toggle")]
-    public GameObject panelDebug, sliderSpeed;
+    //public GameObject panelDebug, sliderSpeed;
+    public GameObject sliderSpeed;
     private bool isToggle = false;
     public bool IsDebugActive => isToggle;
     void Awake()
     {
         Instance = this;
-        panelDebug.SetActive(false);
+        //panelDebug.SetActive(false);
         sliderSpeed.SetActive(false);
     }
 
@@ -30,12 +31,12 @@ public class UIDebugClass : MonoBehaviour
     {
         if(isToggle)
         {
-            panelDebug.SetActive(true);
+            //panelDebug.SetActive(true);
             sliderSpeed.SetActive(true);
         }
         else
         {
-            panelDebug.SetActive(false);
+            //panelDebug.SetActive(false);
             sliderSpeed.SetActive(false);
         }
     }
