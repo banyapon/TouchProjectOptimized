@@ -310,6 +310,60 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 1, y: 4.9207397, z: 1}
   m_Center: {x: 0, y: 2.5144956, z: 0}
+--- !u!1 &1078082862
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1078082864}
+  - component: {fileID: 1078082863}
+  m_Layer: 0
+  m_Name: SplineCreator
+  m_TagString: Untagged
+  m_Icon: {fileID: -1412012063857583412, guid: 0000000000000000d000000000000000, type: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1078082863
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1078082862}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00b545e874be87042b44ed1ae2f5b740, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SplineCreator
+  splineLength: 20
+  splineDirection: {x: 0, y: 0, z: 1}
+  segmentsPerUnit: 3
+  forkPointRatio: 0.4
+  leftBranchAngle: 45
+  leftBranchLength: 12
+  roadWidth: 3
+  roadMaterial: {fileID: 2100000, guid: 46b81c95ac8b799469275c769ba58252, type: 2}
+  roadColor: {r: 0.7132075, g: 0.46694905, b: 0.46694905, a: 1}
+  leftBranchColor: {r: 0.5924529, g: 0.50297856, b: 0.32976148, a: 1}
+--- !u!4 &1078082864
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1078082862}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1303105454
 GameObject:
   m_ObjectHideFlags: 0
@@ -494,6 +548,7 @@ MonoBehaviour:
   raycastLayers:
     serializedVersion: 2
     m_Bits: 0
+  splineCreator: {fileID: 1078082863}
   speedSlider: {fileID: 6685336557305220491}
   baseSpeed: 50
   maxSpeed: 150
@@ -508,16 +563,6 @@ MonoBehaviour:
   swipeMinPixels: 50
   enableYRotation: 1
   twoFingerRotateSpeed: 0.15
-  splineLength: 50
-  splineDirection: {x: 0, y: 0, z: 1}
-  segmentsPerUnit: 3
-  forkPointRatio: 0.4
-  leftBranchAngle: 45
-  leftBranchLength: 12
-  roadWidth: 2
-  roadMaterial: {fileID: 2100000, guid: 46b81c95ac8b799469275c769ba58252, type: 2}
-  roadColor: {r: 0.93962264, g: 0.48044848, b: 0.48044848, a: 1}
-  leftBranchColor: {r: 0, g: 1, b: 0.81531286, a: 1}
   laneCount: 3
   laneWidth: 1
   laneSwitchSpeed: 8
@@ -907,7 +952,7 @@ Transform:
   m_GameObject: {fileID: 919132148944151112}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0.7071068, z: 0.7071068, w: 0}
-  m_LocalPosition: {x: 0, y: 0.01, z: -27}
+  m_LocalPosition: {x: 0, y: 0.01, z: -64}
   m_LocalScale: {x: 600, y: 600, z: 600}
   m_ConstrainProportionsScale: 1
   m_Children: []
@@ -1305,3 +1350,4 @@ SceneRoots:
   - {fileID: 1303105459}
   - {fileID: 101201442}
   - {fileID: 543450652878403826}
+  - {fileID: 1078082864}
