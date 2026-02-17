@@ -487,30 +487,40 @@ MonoBehaviour:
   m_GameObject: {fileID: 1303105454}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bac79edfa2f967544ba560a457d9ba5a, type: 3}
+  m_Script: {fileID: 11500000, guid: 45342e30d80beaf4b9f1ec444bcb132c, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::DogPaddle
+  m_EditorClassIdentifier: Assembly-CSharp::DogPaddleSpline
   vrCamera: {fileID: 1409759936}
   raycastLayers:
     serializedVersion: 2
     m_Bits: 0
   speedSlider: {fileID: 6685336557305220491}
-  baseSpeed: 5
-  maxSpeed: 15
+  baseSpeed: 50
+  maxSpeed: 150
   fallbackDpi: 160
   holdPixelThreshold: 5
-  holdTimeThreshold: 0.2
-  dragDeadZoneCm: 0.15
+  holdTimeThreshold: 0.1
+  dragDeadZoneCm: 0.1
   cmToSpeedScale: 3
-  swipeDragThresholdCm: 3
-  enableSwipe: 1
   swipeVelocityThresholdCm: 12
-  swipeMaxDuration: 0.4
-  swipeMinDistanceCm: 1.5
+  swipeMaxDuration: 0.2
+  swipeMinDistanceCm: 2
   swipeMinPixels: 50
-  swipeMoveDistance: 0.6
   enableYRotation: 1
   twoFingerRotateSpeed: 0.15
+  splineLength: 50
+  splineDirection: {x: 0, y: 0, z: 1}
+  segmentsPerUnit: 3
+  forkPointRatio: 0.4
+  leftBranchAngle: 45
+  leftBranchLength: 12
+  roadWidth: 2
+  roadMaterial: {fileID: 2100000, guid: 46b81c95ac8b799469275c769ba58252, type: 2}
+  roadColor: {r: 0.93962264, g: 0.48044848, b: 0.48044848, a: 1}
+  leftBranchColor: {r: 0, g: 1, b: 0.81531286, a: 1}
+  laneCount: 3
+  laneWidth: 1
+  laneSwitchSpeed: 8
 --- !u!1 &1400712316
 GameObject:
   m_ObjectHideFlags: 0
@@ -897,7 +907,7 @@ Transform:
   m_GameObject: {fileID: 919132148944151112}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0.7071068, z: 0.7071068, w: 0}
-  m_LocalPosition: {x: 0, y: 0.01, z: 5.8}
+  m_LocalPosition: {x: 0, y: 0.01, z: -27}
   m_LocalScale: {x: 600, y: 600, z: 600}
   m_ConstrainProportionsScale: 1
   m_Children: []

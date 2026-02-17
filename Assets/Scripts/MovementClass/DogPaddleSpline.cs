@@ -5,11 +5,12 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 
 [RequireComponent(typeof(Rigidbody))]
-public class DogPaddle : MonoBehaviour
+public class DogPaddleSpline : MonoBehaviour
 {
     [Header("References")]
     public Camera vrCamera;
     public LayerMask raycastLayers;
+    public SplineCreator splineCreator;
 
     [Header("Movement Settings")]
     public Slider speedSlider;
@@ -20,28 +21,38 @@ public class DogPaddle : MonoBehaviour
     public float fallbackDpi = 160f;
 
     [Header("Hold Detection")]
-    public float holdPixelThreshold = 5f;   // delta ต่ำกว่านี้ = นิ้วนิ่ง
-    public float holdTimeThreshold = 0.1f;  // ต้องนิ่งนานเท่านี้ (วินาที) ถึงจะนับว่า Hold
+    public float holdPixelThreshold = 5f;
+    public float holdTimeThreshold = 0.1f;
 
     [Header("Drag Settings (cm)")]
-    public float dragDeadZoneCm = 0.1f;    // dead zone ก่อนเริ่มเคลื่อนที่
-    public float cmToSpeedScale = 3f;       // 1cm drag = speed เท่าไหร่
+    public float dragDeadZoneCm = 0.1f;
+    public float cmToSpeedScale = 3f;
 
     [Header("Swipe Detection (cm/s)")]
     public float swipeVelocityThresholdCm = 12f;
     public float swipeMaxDuration = 0.2f;
     public float swipeMinDistanceCm = 2.0f;
     public float swipeMinPixels = 50f;
-    public float swipeMoveDistance = 0.6f;
 
     [Header("Two-Finger Rotation")]
-    public bool enableYRotation = true;         // toggle เปิด/ปิดหมุน Y
-    public float twoFingerRotateSpeed = 0.15f;  // ความเร็วการหมุน (องศา/px)
+    public bool enableYRotation = true;
+    public float twoFingerRotateSpeed = 0.15f;
+
+    [Header("Lane Settings")]
+    public int laneCount = 3;
+    public float laneWidth = 1.0f;
+    public float laneSwitchSpeed = 8f;
+
+    // --- Current state ---
+    private SplineCreator.BranchType activeBranch = SplineCreator.BranchType.Main;
+    private float currentDistance;
+    private int currentLane;
+    private float targetLaneOffset;
+    private float currentLaneOffset;
+    private float yRotationOffset;
 
     // --- Rigidbody ---
     private Rigidbody rb;
-    private Vector3 desiredVelocity;
-    private bool hasDragInput;
 
     // --- Internal State ---
     enum GestureType { None, Hold, Drag, Swipe, TwoFingerRotate }
@@ -51,15 +62,12 @@ public class DogPaddle : MonoBehaviour
     private bool isTouching;
     private bool touchStartedOnUI;
 
-    // Hold
     private float holdTimer;
     private bool isHolding;
 
-    // Gesture classification
     private GestureType currentGesture = GestureType.None;
-    private bool gestureLocked; // เมื่อ lock แล้วจะไม่เปลี่ยน gesture จนกว่าจะปล่อยนิ้ว
+    private bool gestureLocked;
 
-    // Two-finger rotation
     private bool isTwoFingerActive;
 
     // Debug data
@@ -74,41 +82,104 @@ public class DogPaddle : MonoBehaviour
         rb.useGravity = false;
         rb.constraints = RigidbodyConstraints.FreezeRotation;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        rb.isKinematic = true;
 
         if (speedSlider != null)
         {
             speedSlider.value = baseSpeed;
             speedSlider.onValueChanged.AddListener(v => baseSpeed = v);
         }
+
+        splineCreator.Build(transform.position);
+
+        activeBranch = SplineCreator.BranchType.Main;
+        currentLane = laneCount / 2;
+        targetLaneOffset = GetLaneOffset(currentLane);
+        currentLaneOffset = targetLaneOffset;
+        currentDistance = 0f;
+
+        PlaceOnSpline();
     }
 
     void Update()
     {
         HandleTouchInput();
-    }
 
-    void FixedUpdate()
-    {
-        if (hasDragInput)
-        {
-            rb.linearVelocity = desiredVelocity;
-            hasDragInput = false;
-        }
+        if (Mathf.Abs(currentLaneOffset - targetLaneOffset) > 0.001f)
+            currentLaneOffset = Mathf.Lerp(currentLaneOffset, targetLaneOffset, Time.deltaTime * laneSwitchSpeed);
         else
-        {
-            rb.linearVelocity = Vector3.zero;
-        }
-        desiredVelocity = Vector3.zero;
+            currentLaneOffset = targetLaneOffset;
+
+        PlaceOnSpline();
     }
 
-    // ===== Main Touch Handler =====
+    // ===================================================================
+    //  PLACE ON SPLINE + BRANCH LOGIC
+    // ===================================================================
+
+    void PlaceOnSpline()
+    {
+        float length = splineCreator.GetPathLength(activeBranch);
+        currentDistance = Mathf.Clamp(currentDistance, 0f, length);
+
+        Vector3 pos = splineCreator.SamplePosition(activeBranch, currentDistance);
+        Vector3 fwd = splineCreator.SampleForward(activeBranch, currentDistance);
+        Vector3 right = splineCreator.SampleRight(activeBranch, currentDistance);
+
+        Vector3 finalPos = pos + right * currentLaneOffset;
+        finalPos.y = transform.position.y;
+
+        rb.MovePosition(finalPos);
+
+        if (fwd.sqrMagnitude > 0.001f)
+        {
+            Quaternion splineRot = Quaternion.LookRotation(fwd, Vector3.up);
+            Quaternion yOffset = Quaternion.AngleAxis(yRotationOffset, Vector3.up);
+            transform.rotation = yOffset * splineRot;
+        }
+    }
+
+    void CheckForkTransition()
+    {
+        float mainLength = splineCreator.MainLength;
+
+        if (activeBranch == SplineCreator.BranchType.Main && currentDistance >= mainLength)
+        {
+            float overflow = currentDistance - mainLength;
+
+            if (currentLane == 0)
+                activeBranch = SplineCreator.BranchType.Left;
+            else
+                activeBranch = SplineCreator.BranchType.Straight;
+
+            currentDistance = overflow;
+
+            currentLane = laneCount / 2;
+            targetLaneOffset = GetLaneOffset(currentLane);
+        }
+
+        if (activeBranch != SplineCreator.BranchType.Main && currentDistance <= 0f)
+        {
+            activeBranch = SplineCreator.BranchType.Main;
+            currentDistance = mainLength;
+        }
+    }
+
+    float GetLaneOffset(int lane)
+    {
+        float center = (laneCount - 1) * 0.5f;
+        return (lane - center) * laneWidth;
+    }
+
+    // ===================================================================
+    //  TOUCH INPUT
+    // ===================================================================
 
     void HandleTouchInput()
     {
         if (UIDebugClass.Instance != null && UIDebugClass.Instance.IsDebugActive)
             return;
 
-        // === Two-finger rotation ===
         if (Input.touchCount == 2)
         {
             if (isTouching) ResetState();
@@ -123,7 +194,6 @@ public class DogPaddle : MonoBehaviour
             return;
         }
 
-        // ปล่อยสองนิ้วแล้วกลับมานิ้วเดียว → reset
         if (isTwoFingerActive)
         {
             isTwoFingerActive = false;
@@ -143,19 +213,17 @@ public class DogPaddle : MonoBehaviour
         }
 
         if (LogDataClass.Instance != null)
-            LogDataClass.Instance.LogTouch("dogpaddle", touch);
+            LogDataClass.Instance.LogTouch("dogpaddle_spline", touch);
 
         switch (touch.phase)
         {
-            case TouchPhase.Began:     OnBegan(touch);      break;
-            case TouchPhase.Moved:     OnMoved(touch);      break;
+            case TouchPhase.Began:      OnBegan(touch);      break;
+            case TouchPhase.Moved:      OnMoved(touch);      break;
             case TouchPhase.Stationary: OnStationary(touch); break;
             case TouchPhase.Ended:
-            case TouchPhase.Canceled:  OnEnded(touch);      break;
+            case TouchPhase.Canceled:   OnEnded(touch);      break;
         }
     }
-
-    // ===== Touch Phases =====
 
     void OnBegan(Touch touch)
     {
@@ -178,7 +246,6 @@ public class DogPaddle : MonoBehaviour
 
     void OnMoved(Touch touch)
     {
-        // คำนวณ drag cm จากจุดเริ่ม
         Vector2 deltaPx = touch.position - touchStartPos;
         dragDistanceCm = PixelsToCm(deltaPx);
         totalDragDistanceCm = dragDistanceCm.magnitude;
@@ -186,12 +253,10 @@ public class DogPaddle : MonoBehaviour
         float elapsed = Time.time - touchStartTime;
         currentVelocityCm = elapsed > 0f ? totalDragDistanceCm / elapsed : 0f;
 
-        // ถ้า gesture ถูก lock เป็น Hold แล้ว → ต้อง drag เกิน dead zone ถึงจะปลด
         if (gestureLocked && currentGesture == GestureType.Hold)
         {
             if (totalDragDistanceCm > dragDeadZoneCm * 2f)
             {
-                // ออกจาก hold, เริ่ม drag
                 isHolding = false;
                 gestureLocked = false;
             }
@@ -202,7 +267,6 @@ public class DogPaddle : MonoBehaviour
             }
         }
 
-        // ตรวจ hold: นิ้วแทบไม่ขยับ
         float frameDelta = touch.deltaPosition.magnitude;
         if (frameDelta < holdPixelThreshold)
         {
@@ -222,44 +286,28 @@ public class DogPaddle : MonoBehaviour
             isHolding = false;
         }
 
-        // ยังอยู่ใน dead zone → ไม่ทำอะไร
         if (totalDragDistanceCm < dragDeadZoneCm)
         {
             UpdateDebugUI();
             return;
         }
 
-        // ===== เริ่ม Drag ทันทีหลังพ้น dead zone (ถ้าปล่อยเร็วพอจะตัดสินเป็น Swipe ใน OnEnded) =====
         currentGesture = GestureType.Drag;
 
         Vector2 frameDeltaCm = PixelsToCm(touch.deltaPosition);
-        float speedMultiplier = baseSpeed / 5f; // normalize จาก default baseSpeed=5
-        Vector3 movement = Vector3.zero;
+        float speedMultiplier = baseSpeed / 5f;
 
-        // แนวตั้ง: ลากลง (deltaY-) = ไปหน้า, ลากขึ้น (deltaY+) = ถอยหลัง
         if (Mathf.Abs(frameDeltaCm.y) > 0.001f)
         {
-            float fwdSpeed = Mathf.Clamp(Mathf.Abs(frameDeltaCm.y) * cmToSpeedScale * speedMultiplier, 0f, maxSpeed);
-            float fwdDir = frameDeltaCm.y < 0f ? 1f : -1f;
-            movement += GetHorizontalForward() * fwdDir * fwdSpeed;
+            float moveSpeed = Mathf.Clamp(Mathf.Abs(frameDeltaCm.y) * cmToSpeedScale * speedMultiplier, 0f, maxSpeed);
+            float moveDir = frameDeltaCm.y < 0f ? 1f : -1f;
+            currentDistance += moveDir * moveSpeed * Time.deltaTime;
+
+            CheckForkTransition();
         }
 
-        // แนวนอน: ลากขวา (deltaX+) = ไปขวา, ลากซ้าย (deltaX-) = ไปซ้าย
-        if (Mathf.Abs(frameDeltaCm.x) > 0.001f)
-        {
-            float strafeSpeed = Mathf.Clamp(Mathf.Abs(frameDeltaCm.x) * cmToSpeedScale * speedMultiplier, 0f, maxSpeed);
-            float strafeDir = frameDeltaCm.x > 0f ? 1f : -1f;
-            movement += GetHorizontalRight() * strafeDir * strafeSpeed;
-        }
-
-        if (movement.sqrMagnitude > 0f)
-        {
-            desiredVelocity = movement / Time.deltaTime;
-            hasDragInput = true;
-
-            if (LogDataClass.Instance != null)
-                LogDataClass.Instance.LogMovement("dogpaddle", transform.position, desiredVelocity.magnitude, "Drag");
-        }
+        if (LogDataClass.Instance != null)
+            LogDataClass.Instance.LogMovement("dogpaddle_spline", transform.position, baseSpeed, "Drag");
 
         UpdateDebugUI();
     }
@@ -281,8 +329,6 @@ public class DogPaddle : MonoBehaviour
         float finalDistCm = finalCm.magnitude;
         float finalVelocity = elapsed > 0f ? finalDistCm / elapsed : 0f;
 
-        // ===== Swipe Detection (ตอนปล่อยนิ้ว) =====
-        // ต้อง: velocity สูง + ระยะเวลาสั้น + drag ไกลพอ + แนว horizontal เด่น
         bool isSwipe = finalVelocity >= swipeVelocityThresholdCm
                     && elapsed <= swipeMaxDuration
                     && finalDistCm >= swipeMinDistanceCm
@@ -292,23 +338,18 @@ public class DogPaddle : MonoBehaviour
         if (isSwipe)
         {
             currentGesture = GestureType.Swipe;
-            float dir = finalDeltaPx.x > 0f ? 1f : -1f;
-            Vector3 swipeDir = GetHorizontalRight() * dir;
-            float dist = swipeMoveDistance;
+            int dir = finalDeltaPx.x > 0f ? 1 : -1;
+            int newLane = Mathf.Clamp(currentLane + dir, 0, laneCount - 1);
 
-            // SweepTest: ตรวจ collider ก่อนเลื่อน ถ้าชนให้หยุดก่อนถึง
-            RaycastHit hit;
-            if (rb.SweepTest(swipeDir, out hit, dist))
+            if (newLane != currentLane)
             {
-                dist = Mathf.Max(0f, hit.distance - 0.01f);
+                currentLane = newLane;
+                targetLaneOffset = GetLaneOffset(currentLane);
+
+                if (LogDataClass.Instance != null)
+                    LogDataClass.Instance.LogMovement("dogpaddle_spline", transform.position, 0f,
+                        dir > 0 ? "SwipeRight_Lane" + currentLane : "SwipeLeft_Lane" + currentLane);
             }
-
-            if (dist > 0f)
-                rb.MovePosition(rb.position + swipeDir * dist);
-
-            if (LogDataClass.Instance != null)
-                LogDataClass.Instance.LogMovement("dogpaddle", transform.position, 0f,
-                    dir > 0f ? "SwipeRight" : "SwipeLeft");
         }
 
         UpdateDebugUI();
@@ -327,14 +368,13 @@ public class DogPaddle : MonoBehaviour
         Touch t0 = Input.GetTouch(0);
         Touch t1 = Input.GetTouch(1);
 
-        // ใช้ค่าเฉลี่ย deltaX ของสองนิ้ว → drag ซ้าย/ขวา = หมุน Y
         float avgDeltaX = (t0.deltaPosition.x + t1.deltaPosition.x) * 0.5f;
         float rotAngle = avgDeltaX * twoFingerRotateSpeed;
 
-        transform.Rotate(0f, rotAngle, 0f, Space.World);
+        yRotationOffset += rotAngle;
 
         if (LogDataClass.Instance != null)
-            LogDataClass.Instance.LogMovement("dogpaddle", transform.position, Mathf.Abs(rotAngle), "TwoFingerRotate");
+            LogDataClass.Instance.LogMovement("dogpaddle_spline", transform.position, Mathf.Abs(rotAngle), "TwoFingerRotate");
 
         UpdateDebugUI();
     }
@@ -354,32 +394,6 @@ public class DogPaddle : MonoBehaviour
     {
         if (EventSystem.current == null) return false;
         return EventSystem.current.IsPointerOverGameObject(fingerId);
-    }
-
-    Vector3 GetHorizontalForward()
-    {
-        if (vrCamera != null)
-        {
-            Vector3 fwd = vrCamera.transform.forward;
-            fwd.y = 0f;
-            fwd.Normalize();
-            if (fwd.sqrMagnitude < 0.001f) return transform.forward;
-            return fwd;
-        }
-        return transform.forward;
-    }
-
-    Vector3 GetHorizontalRight()
-    {
-        if (vrCamera != null)
-        {
-            Vector3 right = vrCamera.transform.right;
-            right.y = 0f;
-            right.Normalize();
-            if (right.sqrMagnitude < 0.001f) return transform.right;
-            return right;
-        }
-        return transform.right;
     }
 
     Vector2 PixelsToCm(Vector2 pixels)
@@ -404,9 +418,14 @@ public class DogPaddle : MonoBehaviour
         if (UIDebugClass.Instance == null) return;
 
         float dpi = Screen.dpi > 0 ? Screen.dpi : fallbackDpi;
-        string info = $"=== DogPaddle (DPI: {dpi:F0}) ===\n";
+        float pathLen = splineCreator.GetPathLength(activeBranch);
+        string branchName = activeBranch.ToString();
+
+        string info = $"=== DogPaddleSpline (DPI: {dpi:F0}) ===\n";
         info += $"[{(isTwoFingerActive ? "2F" : "1F")}] {currentGesture}";
         info += $" | Speed: {baseSpeed:F1}";
+        info += $"\nBranch: {branchName} | Lane: {currentLane}/{laneCount - 1}";
+        info += $" | Dist: {currentDistance:F1}/{pathLen:F1}";
         if (currentGesture == GestureType.TwoFingerRotate)
         {
             info += $" | RotY: {(enableYRotation ? "ON" : "OFF")}";
@@ -414,7 +433,7 @@ public class DogPaddle : MonoBehaviour
         else if (currentGesture != GestureType.None)
         {
             info += $" | Zone: {swipeZone}";
-            info += $" | Vel: {currentVelocityCm:F1}cm/s (SwipeThr: {swipeVelocityThresholdCm:F0})";
+            info += $" | Vel: {currentVelocityCm:F1}cm/s";
             info += $"\nDrag: X={dragDistanceCm.x:F2}cm Y={dragDistanceCm.y:F2}cm Total={totalDragDistanceCm:F2}cm";
         }
         UIDebugClass.Instance.SetGestureLog(info);
@@ -428,4 +447,13 @@ public class DogPaddle : MonoBehaviour
     public string GetGestureState() => currentGesture.ToString();
     public float GetVelocityCm() => currentVelocityCm;
     public string GetSwipeZone() => swipeZone;
+    public int GetCurrentLane() => currentLane;
+    public string GetActiveBranch() => activeBranch.ToString();
+    public float GetSplineProgress()
+    {
+        float mainLen = splineCreator.MainLength;
+        float total = mainLen + (activeBranch == SplineCreator.BranchType.Left ? splineCreator.LeftLength : splineCreator.StraightLength);
+        float progress = (activeBranch == SplineCreator.BranchType.Main) ? currentDistance : mainLen + currentDistance;
+        return total > 0f ? progress / total : 0f;
+    }
 }

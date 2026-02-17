@@ -12,6 +12,9 @@ EditorBuildSettings:
     path: Assets/Scenes/DogPaddle.unity
     guid: d02a6b68d91e73c419e84fce6b7a166d
   - enabled: 1
+    path: Assets/Scenes/DogPaddleSpline.unity
+    guid: 8cd47f56d1d1dab42863d85c23677857
+  - enabled: 1
     path: Assets/Scenes/DragnGo.unity
     guid: 374844836bb01764ca3ee6e30394e093
   - enabled: 1
