@@ -848,7 +848,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 8
   modeToggle: {fileID: 641072222}
-  currentMode: 0
+  currentMode: 1
   speedSlider: {fileID: 7962051201909353959}
   moveDuration: 1
   maxRayDistance: 100
@@ -861,6 +861,9 @@ MonoBehaviour:
   pitchMax: 60
   dragThreshold: 10
   doubleTapMaxInterval: 0.3
+  swipeMoveDistance: 0.6
+  swipeMinPixels: 50
+  swipeMaxDuration: 0.4
   showCursor: 1
   cursorRadius: 0.3
   cursorColor: {r: 0, g: 1, b: 1, a: 1}

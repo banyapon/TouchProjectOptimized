@@ -758,16 +758,24 @@ MonoBehaviour:
   raycastLayers:
     serializedVersion: 2
     m_Bits: 1
+  modeToggle: {fileID: 0}
+  currentMode: 0
   speedSlider: {fileID: 1976507076}
   moveSpeed: 5
   maxRayDistance: 100
   maxSwipePixels: 400
-  stopBeforeEnd: 2
+  stopBeforeEnd: 1
   rotationSpeed: 5
   invertTwoFingerRotation: 1
   allowPitch: 0
   pitchMin: -60
   pitchMax: 60
+  dragThreshold: 10
+  doubleTapMaxInterval: 0.3
+  tapDragThreshold: 20
+  swipeMoveDistance: 0.6
+  swipeMinPixels: 50
+  swipeMaxDuration: 0.4
   hitCircleRadius: 0.3
 --- !u!114 &1976507076 stripped
 MonoBehaviour:
