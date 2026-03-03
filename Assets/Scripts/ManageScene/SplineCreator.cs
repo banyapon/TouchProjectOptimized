@@ -293,16 +293,16 @@ public class SplineCreator : MonoBehaviour
         return SamplePositionFromPoints(pts, dists, distance);
     }
 
-    public Vector3 SampleForward(BranchType branch, float distance)
+    public Vector3 SampleTangent(BranchType branch, float distance)
     {
         Vector3[] pts; float[] dists; float length;
         GetPathData(branch, out pts, out dists, out length);
-        float d = 0.1f;
-        Vector3 a = SamplePositionFromPoints(pts, dists, distance);
-        Vector3 b = SamplePositionFromPoints(pts, dists, distance + d);
-        Vector3 dir = (b - a).normalized;
-        if (dir.sqrMagnitude < 0.001f) return splineDirection.normalized;
-        return dir;
+        return SampleTangentFromPoints(pts, dists, distance);
+    }
+
+    public Vector3 SampleForward(BranchType branch, float distance)
+    {
+        return SampleTangent(branch, distance);
     }
 
     public Vector3 SampleRight(BranchType branch, float distance)
@@ -311,6 +311,30 @@ public class SplineCreator : MonoBehaviour
         Vector3 r = Vector3.Cross(Vector3.up, fwd).normalized;
         if (r.sqrMagnitude < 0.001f) return mainRight;
         return r;
+    }
+
+    Vector3 SampleTangentFromPoints(Vector3[] pts, float[] dists, float distance)
+    {
+        if (pts.Length < 2) return splineDirection.normalized;
+
+        float total = dists[dists.Length - 1];
+        distance = Mathf.Clamp(distance, 0f, total);
+
+        // หา segment ที่ distance ตกอยู่
+        for (int i = 1; i < pts.Length; i++)
+        {
+            if (dists[i] >= distance)
+            {
+                Vector3 tangent = (pts[i] - pts[i - 1]).normalized;
+                if (tangent.sqrMagnitude > 0.001f) return tangent;
+                break;
+            }
+        }
+
+        // fallback: ใช้ segment สุดท้าย
+        Vector3 last = (pts[pts.Length - 1] - pts[pts.Length - 2]).normalized;
+        if (last.sqrMagnitude > 0.001f) return last;
+        return splineDirection.normalized;
     }
 
     Vector3 SamplePositionFromPoints(Vector3[] pts, float[] dists, float distance)

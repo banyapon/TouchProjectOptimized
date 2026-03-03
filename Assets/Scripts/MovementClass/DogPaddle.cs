@@ -248,7 +248,7 @@ public class DogPaddle : MonoBehaviour
         if (Mathf.Abs(frameDeltaCm.x) > 0.001f)
         {
             float strafeSpeed = Mathf.Clamp(Mathf.Abs(frameDeltaCm.x) * cmToSpeedScale * speedMultiplier, 0f, maxSpeed);
-            float strafeDir = frameDeltaCm.x > 0f ? 1f : -1f;
+            float strafeDir = frameDeltaCm.x > 0f ? -1f : 1f;
             movement += GetHorizontalRight() * strafeDir * strafeSpeed;
         }
 
@@ -329,7 +329,7 @@ public class DogPaddle : MonoBehaviour
 
         // ใช้ค่าเฉลี่ย deltaX ของสองนิ้ว → drag ซ้าย/ขวา = หมุน Y
         float avgDeltaX = (t0.deltaPosition.x + t1.deltaPosition.x) * 0.5f;
-        float rotAngle = avgDeltaX * twoFingerRotateSpeed;
+        float rotAngle = -avgDeltaX * twoFingerRotateSpeed;
 
         transform.Rotate(0f, rotAngle, 0f, Space.World);
 
@@ -358,28 +358,20 @@ public class DogPaddle : MonoBehaviour
 
     Vector3 GetHorizontalForward()
     {
-        if (vrCamera != null)
-        {
-            Vector3 fwd = vrCamera.transform.forward;
-            fwd.y = 0f;
-            fwd.Normalize();
-            if (fwd.sqrMagnitude < 0.001f) return transform.forward;
-            return fwd;
-        }
-        return transform.forward;
+        Vector3 fwd = transform.forward;
+        fwd.y = 0f;
+        fwd.Normalize();
+        if (fwd.sqrMagnitude < 0.001f) return Vector3.forward;
+        return fwd;
     }
 
     Vector3 GetHorizontalRight()
     {
-        if (vrCamera != null)
-        {
-            Vector3 right = vrCamera.transform.right;
-            right.y = 0f;
-            right.Normalize();
-            if (right.sqrMagnitude < 0.001f) return transform.right;
-            return right;
-        }
-        return transform.right;
+        Vector3 right = transform.right;
+        right.y = 0f;
+        right.Normalize();
+        if (right.sqrMagnitude < 0.001f) return Vector3.right;
+        return right;
     }
 
     Vector2 PixelsToCm(Vector2 pixels)

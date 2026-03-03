@@ -16,7 +16,6 @@ public class StreetView : MonoBehaviour
     public Transform player;                    // ตำแหน่งผู้เล่น (rig/root)
     public Camera vrCamera;                     // กล้องสำหรับ raycast
     public LayerMask groundLayer;               // Layer ของพื้น (Ground)
-
     [Header("Mode Settings")]
     public Toggle modeToggle;                   // Toggle UI สำหรับสลับโหมด
     public StreetViewMode currentMode = StreetViewMode.TwoFingerRotate;
@@ -30,7 +29,7 @@ public class StreetView : MonoBehaviour
 
     [Header("Rotation Settings")]
     public float rotationSpeed = 5f;            // ความเร็วหมุน
-    public bool invertRotation = true;          // กลับทิศหมุน (World Rotate style)
+    public bool invertRotation = false;         // กลับทิศหมุน (World Rotate style)
     public bool allowPitch = true;              // อนุญาตให้เงย/ก้ม
     public float pitchMin = -60f;               // มุมก้มต่ำสุด
     public float pitchMax = 60f;                // มุมเงยสูงสุด
@@ -142,7 +141,11 @@ public class StreetView : MonoBehaviour
         }
         else
         {
-            pointerPos = Input.mousePosition;
+            Vector2 mouse = Input.mousePosition;
+            // ข้ามถ้า mouse อยู่นอกหน้าจอ หรือ เป็น Infinity/NaN
+            if (!float.IsFinite(mouse.x) || !float.IsFinite(mouse.y)) return;
+            if (mouse.x < 0 || mouse.x > Screen.width || mouse.y < 0 || mouse.y > Screen.height) return;
+            pointerPos = mouse;
         }
 
         PerformRaycastFromScreenPosition(pointerPos);
@@ -428,6 +431,26 @@ public class StreetView : MonoBehaviour
             LogDataClass.Instance.LogMovement("streetview", player.position, 0f, dir > 0 ? "SwipeRight" : "SwipeLeft");
 
         return true;
+    }
+
+    public void MoveForwardDefault()
+    {
+        if (vrCamera == null || player == null) return;
+
+        Vector3 forward = vrCamera.transform.forward;
+        forward.y = 0f;
+        forward.Normalize();
+
+        Vector3 targetPos = player.position + forward * noHitMoveDistance;
+        moveTargetPosition = targetPos;
+
+        float distance = Vector3.Distance(player.position, moveTargetPosition);
+        currentMoveSpeed = distance / Mathf.Max(0.1f, moveDuration);
+
+        if (moveRoutine != null) StopCoroutine(moveRoutine);
+        moveRoutine = StartCoroutine(MoveToTarget());
+
+        LogDataClass.Instance?.LogMovement("streetview", moveTargetPosition, currentMoveSpeed, "ArrowTap");
     }
 
     void PerformRaycastFromScreenPosition(Vector2 screenPosition)

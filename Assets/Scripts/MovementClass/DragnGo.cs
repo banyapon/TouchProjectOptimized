@@ -17,7 +17,6 @@ public class DragnGo : MonoBehaviour
     public Camera vrCamera;                  // Camera used for raycast direction
     public LineRenderer laserPointer;        // Visual line for the ray
     public LayerMask raycastLayers;          // Layers the ray can hit
-
     [Header("Mode Settings")]
     public Toggle modeToggle;                // Toggle UI สำหรับสลับโหมด
     public DragnGoMode currentMode = DragnGoMode.TwoFingerRotate;
@@ -28,6 +27,8 @@ public class DragnGo : MonoBehaviour
     public float maxRayDistance = 100f;      // Fallback distance if no hit
     public float maxSwipePixels = 400f;      // Drag distance (pixels) that reaches full ray distance
     public float stopBeforeEnd = 0.15f;      // ระยะที่หยุดก่อนถึงปลาย Ray
+    [Range(0.1f, 1f)]
+    public float dragSensitivity = 0.65f;   // สัดส่วนหน้าจอที่ต้องลากเพื่อเดินเต็มระยะ (0.65 = 65% ของ Screen.height)
 
     [Header("Rotation Settings")]
     public float rotationSpeed = 5f;         // Two-finger rotation sensitivity
@@ -41,10 +42,12 @@ public class DragnGo : MonoBehaviour
     public float doubleTapMaxInterval = 0.3f;  // เวลาสูงสุดระหว่าง tap (วินาที)
     public float tapDragThreshold = 20f;       // ระยะ pixel ที่ถือว่าเป็น tap ไม่ใช่ drag
 
-    [Header("Swipe Strafe Settings")]
+    [Header("Strafe Settings")]
+    public float strafeSpeed = 0.02f;            // ความเร็ว strafe ต่อ pixel (1 นิ้วลากซ้าย-ขวา)
     public float swipeMoveDistance = 0.6f;       // ระยะเคลื่อนที่ซ้าย/ขวาต่อ swipe
     public float swipeMinPixels = 50f;           // ระยะ pixel ขั้นต่ำ horizontal ที่ถือว่าเป็น swipe
     public float swipeMaxDuration = 0.4f;        // เวลาสูงสุดที่ถือว่าเป็น swipe (วินาที)
+    public float dragAxisRatio = 2f;             // อัตราส่วน |deltaX|/|deltaY| ที่ถือว่าเป็น horizontal เท่านั้น (และกลับกัน)
 
     [Header("Hit Circle Settings")]
     public float hitCircleRadius = 0.3f;     // รัศมีของ circle ที่จุดกระทบ
@@ -62,7 +65,12 @@ public class DragnGo : MonoBehaviour
     private bool hasDragLimit = false;
     private bool hasValidHit = false;
     private float touchStartY;
+    private float draggedDistance = 0f;      // ระยะที่สะสมจาก delta drag (แทน absolute Y)
     private Coroutine moveRoutine;
+
+    // Drag axis lock
+    private enum DragAxis { None, Horizontal, Vertical }
+    private DragAxis lockedDragAxis = DragAxis.None;
 
     // Rotation state
     private Vector2 previousTouchMidpoint;
@@ -78,6 +86,9 @@ public class DragnGo : MonoBehaviour
     // One-finger rotation (OneFingerRotate mode)
     private bool isOneFingerRotating = false;
     private Vector2 previousOneFingerPosition;
+
+    // Laser hit state (ใช้ gate การเดินหน้า)
+    private bool hasLaserHit = false;
 
     // Hit circle
     private GameObject hitCircle;
@@ -99,18 +110,17 @@ public class DragnGo : MonoBehaviour
             modeToggle.onValueChanged.AddListener(OnModeToggleChanged);
         }
 
-        // ลดความกว้างของ LineRenderer
+        // ตั้งสี laser เริ่มต้นเป็นแดง ผ่าน Material
         if (laserPointer != null)
         {
-            Color startColor = laserPointer.startColor;
-            Color endColor = laserPointer.endColor;
-            startColor.a = 0.5f;
-            endColor.a = 0.5f;
-            laserPointer.startColor = startColor;
-            laserPointer.endColor = endColor;
+            // vertex color เป็น white เพื่อไม่ให้ tint ทับ material color
+            laserPointer.startColor = Color.white;
+            laserPointer.endColor   = Color.white;
 
             laserPointer.startWidth *= 0.5f;
-            laserPointer.endWidth *= 0.5f;
+            laserPointer.endWidth   *= 0.5f;
+
+            SetLaserColor(Color.red);
         }
 
         CreateHitCircle();
@@ -254,6 +264,9 @@ public class DragnGo : MonoBehaviour
         touchStartY = touch.position.y;
         isDragging = true;
         hasDragLimit = false;
+        draggedDistance = 0f;
+        lockedDragAxis = DragAxis.None;
+
     }
 
     // === 1 Finger: Moved / Stationary ===
@@ -261,7 +274,20 @@ public class DragnGo : MonoBehaviour
     {
         if (!isDragging) return;
 
-        if (UpdateDragRaycast())
+        float deltaX = touch.deltaPosition.x;
+        float deltaY = touch.deltaPosition.y;
+        bool isHorizontalDominant = Mathf.Abs(deltaX) > Mathf.Abs(deltaY) * dragAxisRatio;
+        bool isVerticalDominant   = Mathf.Abs(deltaY) > Mathf.Abs(deltaX) * dragAxisRatio;
+
+        // ล็อค axis ครั้งแรกที่ dominant ชัดเจน
+        if (lockedDragAxis == DragAxis.None)
+        {
+            if (isHorizontalDominant) lockedDragAxis = DragAxis.Horizontal;
+            else if (isVerticalDominant) lockedDragAxis = DragAxis.Vertical;
+        }
+
+        // แนวตั้ง: เดินหน้า-ถอยหลังตาม raycast (เฉพาะถ้า lock เป็น Vertical เท่านั้น)
+        if (lockedDragAxis == DragAxis.Vertical && hasLaserHit && UpdateDragRaycast())
         {
             if (!hasDragLimit)
             {
@@ -271,8 +297,13 @@ public class DragnGo : MonoBehaviour
 
             float effectiveDistance = Mathf.Max(0f, dragMaxDistance - stopBeforeEnd);
             Vector3 direction = (raycastTarget - originalVEPosition).normalized;
-            float movePercent = GetDragPercentFromScreen(touch.position.y);
-            Vector3 targetPosition = originalVEPosition + direction * (effectiveDistance * movePercent);
+
+            // delta: deltaY > 0 = นิ้วขึ้น = ถอยหลัง, deltaY < 0 = นิ้วลง = เดินหน้า
+            float pixelsForFull = Screen.height * Mathf.Max(0.1f, dragSensitivity);
+            float deltaDistance = -touch.deltaPosition.y * effectiveDistance / pixelsForFull;
+            draggedDistance = Mathf.Clamp(draggedDistance + deltaDistance, 0f, effectiveDistance);
+
+            Vector3 targetPosition = originalVEPosition + direction * draggedDistance;
 
             targetPosition.y = originalVEPosition.y;
             StopMoveRoutine();
@@ -281,6 +312,13 @@ public class DragnGo : MonoBehaviour
             // Log movement
             if (LogDataClass.Instance != null)
                 LogDataClass.Instance.LogMovement("dragngo", player.position, moveSpeed, "Drag");
+        }
+
+        // แนวนอน: ลากซ้าย-ขวา = strafe (เฉพาะถ้า lock เป็น Horizontal เท่านั้น)
+        if (lockedDragAxis == DragAxis.Horizontal && Mathf.Abs(deltaX) > 0.5f)
+        {
+            float strafeDir = deltaX > 0f ? -1f : 1f;
+            player.position += player.right * strafeDir * Mathf.Abs(deltaX) * strafeSpeed;
         }
     }
 
@@ -384,7 +422,7 @@ public class DragnGo : MonoBehaviour
         if (Mathf.Abs(delta.x) < swipeMinPixels) return false;
         if (Mathf.Abs(delta.x) <= Mathf.Abs(delta.y)) return false; // ไม่ใช่ horizontal
 
-        float dir = delta.x > 0 ? 1f : -1f;
+        float dir = delta.x > 0 ? -1f : 1f;
         player.position += player.right * dir * swipeMoveDistance;
 
         if (LogDataClass.Instance != null)
@@ -468,7 +506,7 @@ public class DragnGo : MonoBehaviour
     {
         if (laserPointer == null || vrCamera == null) return;
 
-        Vector3 laserStart = player.position;
+        Vector3 laserStart = player.position + Vector3.up * 0.1f;
         Vector3 laserDirection = vrCamera.transform.forward;
 
         laserPointer.SetPosition(0, laserStart);
@@ -476,18 +514,31 @@ public class DragnGo : MonoBehaviour
         RaycastHit hit;
         if (Physics.Raycast(laserStart, laserDirection, out hit, Mathf.Infinity, raycastLayers))
         {
+            hasLaserHit = true;
             laserPointer.SetPosition(1, hit.point);
+            SetLaserColor(Color.white);
 
             Vector3 stopPoint = laserStart + laserDirection * Mathf.Max(0f, hit.distance - stopBeforeEnd);
-            DrawHitCircle(stopPoint, hit.normal);
+            //  DrawHitCircle(stopPoint, hit.normal);
         }
         else
         {
+            hasLaserHit = false;
             laserPointer.SetPosition(1, laserStart + laserDirection * 50f);
+            SetLaserColor(Color.red);
 
             if (hitCircle != null)
                 hitCircle.SetActive(false);
         }
+    }
+
+    void SetLaserColor(Color color)
+    {
+        if (laserPointer == null) return;
+        Material mat = laserPointer.material;
+        mat.SetColor("_BaseColor", color);
+        mat.SetColor("_EmissionColor", color);
+        mat.EnableKeyword("_EMISSION");
     }
 
     void DrawHitCircle(Vector3 hitPoint, Vector3 hitNormal)

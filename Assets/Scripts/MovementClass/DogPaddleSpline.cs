@@ -301,7 +301,9 @@ public class DogPaddleSpline : MonoBehaviour
         {
             float moveSpeed = Mathf.Clamp(Mathf.Abs(frameDeltaCm.y) * cmToSpeedScale * speedMultiplier, 0f, maxSpeed);
             float moveDir = frameDeltaCm.y < 0f ? 1f : -1f;
-            currentDistance += moveDir * moveSpeed * Time.deltaTime;
+            // กลับทิศตามที่อวตารหัน — ถ้าหมุนเกิน 90° ทิศจะกลับ
+            float facingSign = Mathf.Cos(yRotationOffset * Mathf.Deg2Rad) >= 0f ? 1f : -1f;
+            currentDistance += moveDir * facingSign * moveSpeed * Time.deltaTime;
 
             CheckForkTransition();
         }
@@ -338,7 +340,9 @@ public class DogPaddleSpline : MonoBehaviour
         if (isSwipe)
         {
             currentGesture = GestureType.Swipe;
-            int dir = finalDeltaPx.x > 0f ? 1 : -1;
+            // กลับทิศ swipe ตามที่อวตารหัน
+            float swipeFacingSign = Mathf.Cos(yRotationOffset * Mathf.Deg2Rad) >= 0f ? 1f : -1f;
+            int dir = (finalDeltaPx.x > 0f ? 1 : -1) * (int)swipeFacingSign;
             int newLane = Mathf.Clamp(currentLane + dir, 0, laneCount - 1);
 
             if (newLane != currentLane)
@@ -369,7 +373,7 @@ public class DogPaddleSpline : MonoBehaviour
         Touch t1 = Input.GetTouch(1);
 
         float avgDeltaX = (t0.deltaPosition.x + t1.deltaPosition.x) * 0.5f;
-        float rotAngle = avgDeltaX * twoFingerRotateSpeed;
+        float rotAngle = -avgDeltaX * twoFingerRotateSpeed;   // สลับทิศแบบ World-scale เหมือน DogPaddle
 
         yRotationOffset += rotAngle;
 
