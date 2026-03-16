@@ -3,7 +3,7 @@ using UnityEngine;
 
 public class SplineCreator : MonoBehaviour
 {
-    public enum BranchType { Main, Straight, Left }
+    public enum BranchType { Main, Straight, Left, Right }
 
     [Header("Spline Settings")]
     public float splineLength = 20f;
@@ -13,14 +13,18 @@ public class SplineCreator : MonoBehaviour
     [Header("Fork Settings")]
     [Range(0.1f, 0.9f)]
     public float forkPointRatio = 0.4f;
-    public float leftBranchAngle = 45f;
+    public bool forcePlusIntersection = true;
+    public float leftBranchAngle = 90f;
     public float leftBranchLength = 12f;
+    public float rightBranchAngle = 90f;
+    public float rightBranchLength = 12f;
 
     [Header("Road Visual")]
     public float roadWidth = 3f;
     public Material roadMaterial;
     public Color roadColor = new Color(0.3f, 0.3f, 0.3f, 1f);
     public Color leftBranchColor = new Color(0.25f, 0.25f, 0.35f, 1f);
+    public Color rightBranchColor = new Color(0.35f, 0.25f, 0.25f, 1f);
 
     // --- Path data ---
     private Vector3[] mainPoints;
@@ -34,6 +38,9 @@ public class SplineCreator : MonoBehaviour
     private Vector3[] leftPoints;
     private float[] leftDists;
     private float leftLength;
+    private Vector3[] rightPoints;
+    private float[] rightDists;
+    private float rightLength;
 
     private Vector3 mainRight;
 
@@ -49,6 +56,7 @@ public class SplineCreator : MonoBehaviour
     public float MainLength => mainLength;
     public float StraightLength => straightLength;
     public float LeftLength => leftLength;
+    public float RightLength => rightLength;
     public float ForkDistance => forkDistance;
     public Vector3 ForkPosition => forkPosition;
     public Vector3 MainRight => mainRight;
@@ -84,14 +92,27 @@ public class SplineCreator : MonoBehaviour
         straightLength = straightDist;
 
         // --- Left branch (fork → angled left) ---
-        Quaternion leftRot = Quaternion.AngleAxis(-leftBranchAngle, Vector3.up);
-        Vector3 leftDir = leftRot * dir;
-
-        Vector3 leftEnd = forkPosition + leftDir * leftBranchLength;
-        Vector3 leftMid = forkPosition + (dir + leftDir).normalized * (leftBranchLength * 0.5f);
-
-        leftPoints = BuildQuadraticBezier(forkPosition, leftMid, leftEnd, out leftDists);
+        Vector3 leftDir;
+        if (forcePlusIntersection)
+            leftDir = -mainRight;
+        else
+        {
+            Quaternion leftRot = Quaternion.AngleAxis(-leftBranchAngle, Vector3.up);
+            leftDir = leftRot * dir;
+        }
+        leftPoints = BuildStraightSegment(forkPosition, leftDir, leftBranchLength, out leftDists);
         leftLength = leftDists[leftDists.Length - 1];
+
+        Vector3 rightDir;
+        if (forcePlusIntersection)
+            rightDir = mainRight;
+        else
+        {
+            Quaternion rightRot = Quaternion.AngleAxis(rightBranchAngle, Vector3.up);
+            rightDir = rightRot * dir;
+        }
+        rightPoints = BuildStraightSegment(forkPosition, rightDir, rightBranchLength, out rightDists);
+        rightLength = rightDists[rightDists.Length - 1];
     }
 
     Vector3[] BuildStraightSegment(Vector3 start, Vector3 dir, float length, out float[] dists)
@@ -154,6 +175,7 @@ public class SplineCreator : MonoBehaviour
         List<Vector2> allUVs = new List<Vector2>();
         List<int> trisMain = new List<int>();
         List<int> trisLeft = new List<int>();
+        List<int> trisRight = new List<int>();
 
         // Main path
         int offset = allVerts.Count;
@@ -167,11 +189,16 @@ public class SplineCreator : MonoBehaviour
         offset = allVerts.Count;
         AddRoadStripCurved(leftPoints, roadWidth, allVerts, allUVs, trisLeft, offset);
 
+        // Right branch
+        offset = allVerts.Count;
+        AddRoadStripCurved(rightPoints, roadWidth, allVerts, allUVs, trisRight, offset);
+
         mesh.SetVertices(allVerts);
         mesh.SetUVs(0, allUVs);
-        mesh.subMeshCount = 2;
+        mesh.subMeshCount = 3;
         mesh.SetTriangles(trisMain, 0);
         mesh.SetTriangles(trisLeft, 1);
+        mesh.SetTriangles(trisRight, 2);
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
 
@@ -179,7 +206,8 @@ public class SplineCreator : MonoBehaviour
 
         Material matMain = CreateOrUseMaterial(roadColor);
         Material matLeft = CreateOrUseMaterial(leftBranchColor);
-        mr.materials = new Material[] { matMain, matLeft };
+        Material matRight = CreateOrUseMaterial(rightBranchColor);
+        mr.materials = new Material[] { matMain, matLeft, matRight };
     }
 
     void AddRoadStrip(Vector3[] pts, Vector3 right, float width,
@@ -269,6 +297,8 @@ public class SplineCreator : MonoBehaviour
         {
             case BranchType.Left:
                 pts = leftPoints; dists = leftDists; length = leftLength; return;
+            case BranchType.Right:
+                pts = rightPoints; dists = rightDists; length = rightLength; return;
             case BranchType.Straight:
                 pts = straightPoints; dists = straightDists; length = straightLength; return;
             default:
@@ -281,6 +311,7 @@ public class SplineCreator : MonoBehaviour
         switch (branch)
         {
             case BranchType.Left: return leftLength;
+            case BranchType.Right: return rightLength;
             case BranchType.Straight: return straightLength;
             default: return mainLength;
         }

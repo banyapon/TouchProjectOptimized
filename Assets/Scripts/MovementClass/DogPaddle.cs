@@ -37,11 +37,18 @@ public class DogPaddle : MonoBehaviour
     [Header("Two-Finger Rotation")]
     public bool enableYRotation = true;         // toggle เปิด/ปิดหมุน Y
     public float twoFingerRotateSpeed = 0.15f;  // ความเร็วการหมุน (องศา/px)
-
+    [Header("Walkable Restriction")]
+    public bool restrictToWalkable = true;
+    public string walkableLayerName = "Walkable";
+    public string roadTag = "road";
+    public float groundCheckStartHeight = 1.5f;
+    public float groundCheckDistance = 4f;
+    public int pathValidationSteps = 8;
     // --- Rigidbody ---
     private Rigidbody rb;
     private Vector3 desiredVelocity;
     private bool hasDragInput;
+    private int walkableLayer = -1;
 
     // --- Internal State ---
     enum GestureType { None, Hold, Drag, Swipe, TwoFingerRotate }
@@ -74,6 +81,7 @@ public class DogPaddle : MonoBehaviour
         rb.useGravity = false;
         rb.constraints = RigidbodyConstraints.FreezeRotation;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        walkableLayer = LayerMask.NameToLayer(walkableLayerName);
 
         if (speedSlider != null)
         {
@@ -91,7 +99,7 @@ public class DogPaddle : MonoBehaviour
     {
         if (hasDragInput)
         {
-            rb.linearVelocity = desiredVelocity;
+            rb.linearVelocity = GetValidatedVelocity(desiredVelocity);
             hasDragInput = false;
         }
         else
@@ -303,6 +311,7 @@ public class DogPaddle : MonoBehaviour
                 dist = Mathf.Max(0f, hit.distance - 0.01f);
             }
 
+            dist = GetValidWalkableMoveDistance(swipeDir, dist);
             if (dist > 0f)
                 rb.MovePosition(rb.position + swipeDir * dist);
 
@@ -372,6 +381,43 @@ public class DogPaddle : MonoBehaviour
         right.Normalize();
         if (right.sqrMagnitude < 0.001f) return Vector3.right;
         return right;
+    }
+
+    Vector3 GetValidatedVelocity(Vector3 targetVelocity)
+    {
+        if (!restrictToWalkable || targetVelocity.sqrMagnitude < 0.0001f)
+            return targetVelocity;
+        float requestedDistance = targetVelocity.magnitude * Time.fixedDeltaTime;
+        if (requestedDistance <= 0f)
+            return Vector3.zero;
+        Vector3 direction = targetVelocity.normalized;
+        float validDistance = GetValidWalkableMoveDistance(direction, requestedDistance);
+        if (validDistance <= 0f)
+            return Vector3.zero;
+        return direction * (validDistance / Time.fixedDeltaTime);
+    }
+    float GetValidWalkableMoveDistance(Vector3 direction, float requestedDistance)
+    {
+        if (!restrictToWalkable || requestedDistance <= 0f)
+            return requestedDistance;
+        int steps = Mathf.Max(1, pathValidationSteps);
+        for (int i = steps; i >= 1; i--)
+        {
+            float candidateDistance = requestedDistance * (i / (float)steps);
+            Vector3 candidatePosition = rb.position + direction * candidateDistance;
+            if (IsWalkablePosition(candidatePosition))
+                return candidateDistance;
+        }
+        return 0f;
+    }
+    bool IsWalkablePosition(Vector3 worldPosition)
+    {
+        Vector3 rayOrigin = worldPosition + Vector3.up * groundCheckStartHeight;
+        if (!Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, groundCheckDistance, ~0, QueryTriggerInteraction.Ignore))
+            return false;
+        bool isWalkableLayer = walkableLayer >= 0 && hit.collider.gameObject.layer == walkableLayer;
+        bool isRoadTag = !string.IsNullOrEmpty(roadTag) && hit.collider.CompareTag(roadTag);
+        return isWalkableLayer || isRoadTag;
     }
 
     Vector2 PixelsToCm(Vector2 pixels)

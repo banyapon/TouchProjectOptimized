@@ -42,6 +42,10 @@ public class DogPaddleSpline : MonoBehaviour
     public int laneCount = 3;
     public float laneWidth = 1.0f;
     public float laneSwitchSpeed = 8f;
+    [Header("Tangent Turn Animation")]
+    public bool smoothTurnToSplineTangent = true;
+    public float tangentTurnDuration = 0.2f;
+    public AnimationCurve tangentTurnCurve = null;
 
     // --- Current state ---
     private SplineCreator.BranchType activeBranch = SplineCreator.BranchType.Main;
@@ -50,6 +54,10 @@ public class DogPaddleSpline : MonoBehaviour
     private float targetLaneOffset;
     private float currentLaneOffset;
     private float yRotationOffset;
+    private bool isTangentTurnAnimating;
+    private float tangentTurnTimer;
+    private Quaternion tangentTurnFrom;
+    private Quaternion tangentTurnTo;
 
     // --- Rigidbody ---
     private Rigidbody rb;
@@ -97,6 +105,8 @@ public class DogPaddleSpline : MonoBehaviour
         targetLaneOffset = GetLaneOffset(currentLane);
         currentLaneOffset = targetLaneOffset;
         currentDistance = 0f;
+        if (tangentTurnCurve == null || tangentTurnCurve.length == 0)
+            tangentTurnCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
         PlaceOnSpline();
     }
@@ -112,10 +122,6 @@ public class DogPaddleSpline : MonoBehaviour
 
         PlaceOnSpline();
     }
-
-    // ===================================================================
-    //  PLACE ON SPLINE + BRANCH LOGIC
-    // ===================================================================
 
     void PlaceOnSpline()
     {
@@ -135,7 +141,25 @@ public class DogPaddleSpline : MonoBehaviour
         {
             Quaternion splineRot = Quaternion.LookRotation(fwd, Vector3.up);
             Quaternion yOffset = Quaternion.AngleAxis(yRotationOffset, Vector3.up);
-            transform.rotation = yOffset * splineRot;
+            Quaternion desiredRotation = yOffset * splineRot;
+
+            if (isTangentTurnAnimating)
+            {
+                tangentTurnTimer += Time.deltaTime;
+                float duration = Mathf.Max(0.0001f, tangentTurnDuration);
+                float t = Mathf.Clamp01(tangentTurnTimer / duration);
+                float eased = tangentTurnCurve != null ? tangentTurnCurve.Evaluate(t) : t;
+                transform.rotation = Quaternion.Slerp(tangentTurnFrom, tangentTurnTo, eased);
+                if (t >= 1f)
+                {
+                    isTangentTurnAnimating = false;
+                    transform.rotation = desiredRotation;
+                }
+            }
+            else
+            {
+                transform.rotation = desiredRotation;
+            }
         }
     }
 
@@ -147,18 +171,27 @@ public class DogPaddleSpline : MonoBehaviour
         {
             float overflow = currentDistance - mainLength;
 
-            if (currentLane == 0)
+            if (currentLane <= 0)
                 activeBranch = SplineCreator.BranchType.Left;
+            else if (currentLane >= laneCount - 1)
+                activeBranch = SplineCreator.BranchType.Right;
             else
                 activeBranch = SplineCreator.BranchType.Straight;
 
             currentDistance = overflow;
+            yRotationOffset = 0f;
+
+            if (smoothTurnToSplineTangent)
+            {
+                Vector3 branchFwd = splineCreator.SampleForward(activeBranch, currentDistance);
+                StartTangentTurn(branchFwd);
+            }
 
             currentLane = laneCount / 2;
             targetLaneOffset = GetLaneOffset(currentLane);
         }
 
-        if (activeBranch != SplineCreator.BranchType.Main && currentDistance <= 0f)
+        else if (activeBranch != SplineCreator.BranchType.Main && currentDistance < 0f)
         {
             activeBranch = SplineCreator.BranchType.Main;
             currentDistance = mainLength;
@@ -349,6 +382,11 @@ public class DogPaddleSpline : MonoBehaviour
             {
                 currentLane = newLane;
                 targetLaneOffset = GetLaneOffset(currentLane);
+                if (smoothTurnToSplineTangent)
+                {
+                    Vector3 branchFwd = splineCreator.SampleForward(activeBranch, currentDistance);
+                    StartTangentTurn(branchFwd);
+                }
 
                 if (LogDataClass.Instance != null)
                     LogDataClass.Instance.LogMovement("dogpaddle_spline", transform.position, 0f,
@@ -398,6 +436,19 @@ public class DogPaddleSpline : MonoBehaviour
     {
         if (EventSystem.current == null) return false;
         return EventSystem.current.IsPointerOverGameObject(fingerId);
+    }
+
+    void StartTangentTurn(Vector3 tangentForward)
+    {
+        if (tangentForward.sqrMagnitude < 0.001f)
+            return;
+
+        Quaternion splineRot = Quaternion.LookRotation(tangentForward.normalized, Vector3.up);
+        Quaternion yOffset = Quaternion.AngleAxis(yRotationOffset, Vector3.up);
+        tangentTurnFrom = transform.rotation;
+        tangentTurnTo = yOffset * splineRot;
+        tangentTurnTimer = 0f;
+        isTangentTurnAnimating = true;
     }
 
     Vector2 PixelsToCm(Vector2 pixels)
@@ -456,7 +507,11 @@ public class DogPaddleSpline : MonoBehaviour
     public float GetSplineProgress()
     {
         float mainLen = splineCreator.MainLength;
-        float total = mainLen + (activeBranch == SplineCreator.BranchType.Left ? splineCreator.LeftLength : splineCreator.StraightLength);
+        float branchLen = splineCreator.StraightLength;
+        if (activeBranch == SplineCreator.BranchType.Left) branchLen = splineCreator.LeftLength;
+        else if (activeBranch == SplineCreator.BranchType.Right) branchLen = splineCreator.RightLength;
+
+        float total = mainLen + branchLen;
         float progress = (activeBranch == SplineCreator.BranchType.Main) ? currentDistance : mainLen + currentDistance;
         return total > 0f ? progress / total : 0f;
     }
