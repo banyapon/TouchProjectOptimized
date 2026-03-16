@@ -51,8 +51,6 @@ public class DogPaddleSpline : MonoBehaviour
     private SplineCreator.BranchType activeBranch = SplineCreator.BranchType.Main;
     private float currentDistance;
     private int currentLane;
-    private float targetLaneOffset;
-    private float currentLaneOffset;
     private float yRotationOffset;
     private bool isTangentTurnAnimating;
     private float tangentTurnTimer;
@@ -102,24 +100,17 @@ public class DogPaddleSpline : MonoBehaviour
 
         activeBranch = SplineCreator.BranchType.Main;
         currentLane = laneCount / 2;
-        targetLaneOffset = GetLaneOffset(currentLane);
-        currentLaneOffset = targetLaneOffset;
         currentDistance = 0f;
         if (tangentTurnCurve == null || tangentTurnCurve.length == 0)
             tangentTurnCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
+        splineCreator.HighlightReservedBranch(SplineCreator.BranchType.Main);
         PlaceOnSpline();
     }
 
     void Update()
     {
         HandleTouchInput();
-
-        if (Mathf.Abs(currentLaneOffset - targetLaneOffset) > 0.001f)
-            currentLaneOffset = Mathf.Lerp(currentLaneOffset, targetLaneOffset, Time.deltaTime * laneSwitchSpeed);
-        else
-            currentLaneOffset = targetLaneOffset;
-
         PlaceOnSpline();
     }
 
@@ -130,9 +121,7 @@ public class DogPaddleSpline : MonoBehaviour
 
         Vector3 pos = splineCreator.SamplePosition(activeBranch, currentDistance);
         Vector3 fwd = splineCreator.SampleForward(activeBranch, currentDistance);
-        Vector3 right = splineCreator.SampleRight(activeBranch, currentDistance);
-
-        Vector3 finalPos = pos + right * currentLaneOffset;
+        Vector3 finalPos = pos;
         finalPos.y = transform.position.y;
 
         rb.MovePosition(finalPos);
@@ -170,13 +159,7 @@ public class DogPaddleSpline : MonoBehaviour
         if (activeBranch == SplineCreator.BranchType.Main && currentDistance >= mainLength)
         {
             float overflow = currentDistance - mainLength;
-
-            if (currentLane <= 0)
-                activeBranch = SplineCreator.BranchType.Left;
-            else if (currentLane >= laneCount - 1)
-                activeBranch = SplineCreator.BranchType.Right;
-            else
-                activeBranch = SplineCreator.BranchType.Straight;
+            activeBranch = GetReservedBranch();
 
             currentDistance = overflow;
             yRotationOffset = 0f;
@@ -187,8 +170,7 @@ public class DogPaddleSpline : MonoBehaviour
                 StartTangentTurn(branchFwd);
             }
 
-            currentLane = laneCount / 2;
-            targetLaneOffset = GetLaneOffset(currentLane);
+            splineCreator.HighlightReservedBranch(activeBranch);
         }
 
         else if (activeBranch != SplineCreator.BranchType.Main && currentDistance < 0f)
@@ -198,10 +180,13 @@ public class DogPaddleSpline : MonoBehaviour
         }
     }
 
-    float GetLaneOffset(int lane)
+    SplineCreator.BranchType GetReservedBranch()
     {
-        float center = (laneCount - 1) * 0.5f;
-        return (lane - center) * laneWidth;
+        if (currentLane <= 0)
+            return SplineCreator.BranchType.Left;
+        if (currentLane >= laneCount - 1)
+            return SplineCreator.BranchType.Right;
+        return SplineCreator.BranchType.Straight;
     }
 
     // ===================================================================
@@ -376,21 +361,19 @@ public class DogPaddleSpline : MonoBehaviour
             // กลับทิศ swipe ตามที่อวตารหัน
             float swipeFacingSign = Mathf.Cos(yRotationOffset * Mathf.Deg2Rad) >= 0f ? 1f : -1f;
             int dir = (finalDeltaPx.x > 0f ? 1 : -1) * (int)swipeFacingSign;
-            int newLane = Mathf.Clamp(currentLane + dir, 0, laneCount - 1);
-
-            if (newLane != currentLane)
+            if (activeBranch == SplineCreator.BranchType.Main)
             {
-                currentLane = newLane;
-                targetLaneOffset = GetLaneOffset(currentLane);
-                if (smoothTurnToSplineTangent)
-                {
-                    Vector3 branchFwd = splineCreator.SampleForward(activeBranch, currentDistance);
-                    StartTangentTurn(branchFwd);
-                }
+                int newLane = Mathf.Clamp(currentLane + dir, 0, laneCount - 1);
 
-                if (LogDataClass.Instance != null)
-                    LogDataClass.Instance.LogMovement("dogpaddle_spline", transform.position, 0f,
-                        dir > 0 ? "SwipeRight_Lane" + currentLane : "SwipeLeft_Lane" + currentLane);
+                if (newLane != currentLane)
+                {
+                    currentLane = newLane;
+                    splineCreator.HighlightReservedBranch(GetReservedBranch());
+
+                    if (LogDataClass.Instance != null)
+                        LogDataClass.Instance.LogMovement("dogpaddle_spline", transform.position, 0f,
+                            dir > 0 ? "SwipeRight_ReserveLane" + currentLane : "SwipeLeft_ReserveLane" + currentLane);
+                }
             }
         }
 
@@ -479,7 +462,7 @@ public class DogPaddleSpline : MonoBehaviour
         string info = $"=== DogPaddleSpline (DPI: {dpi:F0}) ===\n";
         info += $"[{(isTwoFingerActive ? "2F" : "1F")}] {currentGesture}";
         info += $" | Speed: {baseSpeed:F1}";
-        info += $"\nBranch: {branchName} | Lane: {currentLane}/{laneCount - 1}";
+        info += $"\nBranch: {branchName} | Reserved: {GetReservedBranch()} ({currentLane}/{laneCount - 1})";
         info += $" | Dist: {currentDistance:F1}/{pathLen:F1}";
         if (currentGesture == GestureType.TwoFingerRotate)
         {

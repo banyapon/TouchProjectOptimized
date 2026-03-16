@@ -22,9 +22,8 @@ public class SplineCreator : MonoBehaviour
     [Header("Road Visual")]
     public float roadWidth = 3f;
     public Material roadMaterial;
-    public Color roadColor = new Color(0.3f, 0.3f, 0.3f, 1f);
-    public Color leftBranchColor = new Color(0.25f, 0.25f, 0.35f, 1f);
-    public Color rightBranchColor = new Color(0.35f, 0.25f, 0.25f, 1f);
+    public Color defaultRoadColor = Color.red;
+    public Color reservedRoadColor = Color.white;
 
     // --- Path data ---
     private Vector3[] mainPoints;
@@ -51,6 +50,11 @@ public class SplineCreator : MonoBehaviour
 
     // --- Road Mesh ---
     private GameObject roadObject;
+    private MeshRenderer roadRenderer;
+    private Material mainRoadMaterial;
+    private Material straightRoadMaterial;
+    private Material leftRoadMaterial;
+    private Material rightRoadMaterial;
 
     // --- Public accessors ---
     public float MainLength => mainLength;
@@ -161,19 +165,23 @@ public class SplineCreator : MonoBehaviour
 
     void BuildRoadMesh()
     {
+        if (roadObject != null)
+            Destroy(roadObject);
+
         roadObject = new GameObject("SplineRoad");
         roadObject.transform.SetParent(transform);
         roadObject.transform.position = Vector3.zero;
         roadObject.transform.rotation = Quaternion.identity;
 
         MeshFilter mf = roadObject.AddComponent<MeshFilter>();
-        MeshRenderer mr = roadObject.AddComponent<MeshRenderer>();
+        roadRenderer = roadObject.AddComponent<MeshRenderer>();
 
         Mesh mesh = new Mesh { name = "ForkRoadMesh" };
 
         List<Vector3> allVerts = new List<Vector3>();
         List<Vector2> allUVs = new List<Vector2>();
         List<int> trisMain = new List<int>();
+        List<int> trisStraight = new List<int>();
         List<int> trisLeft = new List<int>();
         List<int> trisRight = new List<int>();
 
@@ -183,7 +191,7 @@ public class SplineCreator : MonoBehaviour
 
         // Straight branch
         offset = allVerts.Count;
-        AddRoadStrip(straightPoints, mainRight, roadWidth, allVerts, allUVs, trisMain, offset);
+        AddRoadStrip(straightPoints, mainRight, roadWidth, allVerts, allUVs, trisStraight, offset);
 
         // Left branch
         offset = allVerts.Count;
@@ -195,19 +203,22 @@ public class SplineCreator : MonoBehaviour
 
         mesh.SetVertices(allVerts);
         mesh.SetUVs(0, allUVs);
-        mesh.subMeshCount = 3;
+        mesh.subMeshCount = 4;
         mesh.SetTriangles(trisMain, 0);
-        mesh.SetTriangles(trisLeft, 1);
-        mesh.SetTriangles(trisRight, 2);
+        mesh.SetTriangles(trisStraight, 1);
+        mesh.SetTriangles(trisLeft, 2);
+        mesh.SetTriangles(trisRight, 3);
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
 
         mf.mesh = mesh;
 
-        Material matMain = CreateOrUseMaterial(roadColor);
-        Material matLeft = CreateOrUseMaterial(leftBranchColor);
-        Material matRight = CreateOrUseMaterial(rightBranchColor);
-        mr.materials = new Material[] { matMain, matLeft, matRight };
+        mainRoadMaterial = CreateOrUseMaterial(defaultRoadColor);
+        straightRoadMaterial = CreateOrUseMaterial(defaultRoadColor);
+        leftRoadMaterial = CreateOrUseMaterial(defaultRoadColor);
+        rightRoadMaterial = CreateOrUseMaterial(defaultRoadColor);
+        roadRenderer.materials = new Material[] { mainRoadMaterial, straightRoadMaterial, leftRoadMaterial, rightRoadMaterial };
+        HighlightReservedBranch(BranchType.Main);
     }
 
     void AddRoadStrip(Vector3[] pts, Vector3 right, float width,
@@ -285,6 +296,35 @@ public class SplineCreator : MonoBehaviour
         Material mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
         mat.color = color;
         return mat;
+    }
+
+    public void HighlightReservedBranch(BranchType branch)
+    {
+        ApplyMaterialColor(mainRoadMaterial, defaultRoadColor);
+        ApplyMaterialColor(straightRoadMaterial, defaultRoadColor);
+        ApplyMaterialColor(leftRoadMaterial, defaultRoadColor);
+        ApplyMaterialColor(rightRoadMaterial, defaultRoadColor);
+
+        switch (branch)
+        {
+            case BranchType.Left:
+                ApplyMaterialColor(leftRoadMaterial, reservedRoadColor);
+                break;
+            case BranchType.Right:
+                ApplyMaterialColor(rightRoadMaterial, reservedRoadColor);
+                break;
+            case BranchType.Straight:
+                ApplyMaterialColor(straightRoadMaterial, reservedRoadColor);
+                break;
+        }
+    }
+
+    void ApplyMaterialColor(Material material, Color color)
+    {
+        if (material == null)
+            return;
+
+        material.color = color;
     }
 
     // ===================================================================
