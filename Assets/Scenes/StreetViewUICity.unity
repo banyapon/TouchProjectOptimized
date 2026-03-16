@@ -953,6 +953,7 @@ GameObject:
   - component: {fileID: 1303105460}
   - component: {fileID: 1303105455}
   - component: {fileID: 1303105461}
+  - component: {fileID: 1303105462}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -1124,7 +1125,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 8
   modeToggle: {fileID: 641072222}
-  currentMode: 1
+  currentMode: 0
   speedSlider: {fileID: 2096295850697914498}
   moveDuration: 0.1
   maxRayDistance: 100
@@ -1140,10 +1141,41 @@ MonoBehaviour:
   swipeMoveDistance: 0.6
   swipeMinPixels: 50
   swipeMaxDuration: 0.4
+  walkableLayerName: Walkable
+  groundProbeHeight: 0.5
+  groundProbeDistance: 1.5
+  footOffset: 0.02
   showCursor: 1
   cursorRadius: 0.25
-  cursorColor: {r: 0, g: 1, b: 0.55724907, a: 0.9490196}
-  cursorLineWidth: 0.08
+  cursorColor: {r: 1, g: 1, b: 1, a: 0.9490196}
+  cursorLineWidth: 0.1
+  cursorForwardOffset: 0.15
+  cursorDirectionLength: 0.35
+--- !u!143 &1303105462
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1303105454}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 0
+  serializedVersion: 3
+  m_Height: 2
+  m_Radius: 0.5
+  m_SlopeLimit: 45
+  m_StepOffset: 0.3
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1400712316
 GameObject:
   m_ObjectHideFlags: 0

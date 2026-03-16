@@ -1407,6 +1407,7 @@ GameObject:
   - component: {fileID: 1437163028}
   - component: {fileID: 1437163030}
   - component: {fileID: 1437163029}
+  - component: {fileID: 1437163031}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -1535,8 +1536,8 @@ Rigidbody:
     m_Bits: 0
   m_ImplicitCom: 1
   m_ImplicitTensor: 1
-  m_UseGravity: 0
-  m_IsKinematic: 1
+  m_UseGravity: 1
+  m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 112
   m_CollisionDetection: 0
@@ -1713,6 +1714,35 @@ MonoBehaviour:
   swipeMaxDuration: 0.4
   dragAxisRatio: 2
   hitCircleRadius: 0.3
+  walkableLayerName: Walkable
+  groundProbeHeight: 2
+  groundProbeDistance: 5
+  footOffset: 0.02
+--- !u!143 &1437163031
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1437163022}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 0
+  serializedVersion: 3
+  m_Height: 2
+  m_Radius: 0.5
+  m_SlopeLimit: 45
+  m_StepOffset: 0.3
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1453814889 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 5389749951977753667, guid: dfb9ee9f221baa94c881117e73dcba1d, type: 3}
@@ -2180,9 +2210,6 @@ PrefabInstance:
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 9186830306142490718, guid: 945c668c9523fd94098d643b094cd928, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
     - targetCorrespondingSourceObject: {fileID: 863360717463100172, guid: 945c668c9523fd94098d643b094cd928, type: 3}
       insertIndex: -1
       addedObject: {fileID: 0}

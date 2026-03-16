@@ -218,7 +218,7 @@ public class SplineCreator : MonoBehaviour
         leftRoadMaterial = CreateOrUseMaterial(defaultRoadColor);
         rightRoadMaterial = CreateOrUseMaterial(defaultRoadColor);
         roadRenderer.materials = new Material[] { mainRoadMaterial, straightRoadMaterial, leftRoadMaterial, rightRoadMaterial };
-        HighlightReservedBranch(BranchType.Main);
+        HighlightBranches(BranchType.Main);
     }
 
     void AddRoadStrip(Vector3[] pts, Vector3 right, float width,
@@ -298,15 +298,26 @@ public class SplineCreator : MonoBehaviour
         return mat;
     }
 
-    public void HighlightReservedBranch(BranchType branch)
+    public void HighlightBranches(BranchType activeBranch, BranchType reservedBranch = BranchType.Main)
     {
         ApplyMaterialColor(mainRoadMaterial, defaultRoadColor);
         ApplyMaterialColor(straightRoadMaterial, defaultRoadColor);
         ApplyMaterialColor(leftRoadMaterial, defaultRoadColor);
         ApplyMaterialColor(rightRoadMaterial, defaultRoadColor);
 
+        HighlightBranch(activeBranch);
+
+        if (reservedBranch != activeBranch)
+            HighlightBranch(reservedBranch);
+    }
+
+    void HighlightBranch(BranchType branch)
+    {
         switch (branch)
         {
+            case BranchType.Main:
+                ApplyMaterialColor(mainRoadMaterial, reservedRoadColor);
+                break;
             case BranchType.Left:
                 ApplyMaterialColor(leftRoadMaterial, reservedRoadColor);
                 break;

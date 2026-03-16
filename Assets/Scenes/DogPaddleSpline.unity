@@ -490,9 +490,8 @@ MonoBehaviour:
   rightBranchLength: 12
   roadWidth: 0.1
   roadMaterial: {fileID: 2100000, guid: 46b81c95ac8b799469275c769ba58252, type: 2}
-  roadColor: {r: 0.7132075, g: 0.46694905, b: 0.46694905, a: 1}
-  leftBranchColor: {r: 0.5924529, g: 0.50297856, b: 0.32976148, a: 1}
-  rightBranchColor: {r: 0, g: 1, b: 0.53824854, a: 1}
+  defaultRoadColor: {r: 1, g: 0, b: 0, a: 1}
+  reservedRoadColor: {r: 1, g: 1, b: 1, a: 1}
 --- !u!4 &1078082864
 Transform:
   m_ObjectHideFlags: 0
@@ -523,6 +522,7 @@ GameObject:
   - component: {fileID: 1303105460}
   - component: {fileID: 1303105455}
   - component: {fileID: 1303105461}
+  - component: {fileID: 1303105462}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -719,6 +719,31 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!143 &1303105462
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1303105454}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 2
+  m_Radius: 0.5
+  m_SlopeLimit: 45
+  m_StepOffset: 0.3
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1400712316
 GameObject:
   m_ObjectHideFlags: 0
