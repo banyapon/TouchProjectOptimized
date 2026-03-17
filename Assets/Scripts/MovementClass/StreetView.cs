@@ -76,6 +76,7 @@ public class StreetView : MonoBehaviour
     private Coroutine moveRoutine;
     private float currentMoveSpeed;
     private Vector3 moveTargetPosition;
+    private bool hideCursorUntilPointerActivity = false;
 
     // Touch
     private Vector2 touchStartPosition;
@@ -132,7 +133,10 @@ public class StreetView : MonoBehaviour
             playerCapsuleCollider = player.GetComponent<CapsuleCollider>();
         }
 
+        SnapPlayerToWalkable();
+        previousMousePosition = Input.mousePosition;
         CreateCursor();
+        hideCursorUntilPointerActivity = true;
     }
 
     void OnSpeedSliderChanged(float value)
@@ -153,14 +157,44 @@ public class StreetView : MonoBehaviour
     void Update()
     {
         HandleTouchInput();
-        SnapPlayerToWalkable();
+        DetectPointerActivity();
         UpdateCursorTracking();
         UpdateCursor();
+    }
+
+    void DetectPointerActivity()
+    {
+        if (!hideCursorUntilPointerActivity)
+            return;
+
+        bool hasTouchActivity = false;
+        for (int i = 0; i < Input.touchCount; i++)
+        {
+            Touch touch = Input.GetTouch(i);
+            if (touch.phase == TouchPhase.Began)
+            {
+                hasTouchActivity = true;
+                break;
+            }
+        }
+
+        Vector2 mousePosition = Input.mousePosition;
+        bool hasMouseMove =
+            float.IsFinite(mousePosition.x) &&
+            float.IsFinite(mousePosition.y) &&
+            mousePosition != previousMousePosition;
+        bool hasMouseActivity = Input.GetMouseButtonDown(0) || hasMouseMove;
+
+        if (hasTouchActivity || hasMouseActivity)
+            hideCursorUntilPointerActivity = false;
+
+        previousMousePosition = mousePosition;
     }
 
     void UpdateCursorTracking()
     {
         if (!showCursor || vrCamera == null) return;
+        if (hideCursorUntilPointerActivity || moveRoutine != null) return;
 
         Vector2 pointerPos;
 
@@ -478,6 +512,7 @@ public class StreetView : MonoBehaviour
 
         float distance = Vector3.Distance(player.position, moveTargetPosition);
         currentMoveSpeed = distance / Mathf.Max(0.1f, moveDuration);
+        hideCursorUntilPointerActivity = true;
 
         if (moveRoutine != null) StopCoroutine(moveRoutine);
         moveRoutine = StartCoroutine(MoveToTarget());
@@ -541,6 +576,7 @@ public class StreetView : MonoBehaviour
         // คำนวณ speed จาก distance / duration → ไกลหรือใกล้ใช้เวลาเท่ากัน
         float distance = Vector3.Distance(player.position, moveTargetPosition);
         currentMoveSpeed = distance / Mathf.Max(0.1f, moveDuration);
+        hideCursorUntilPointerActivity = true;
 
         if (moveRoutine != null)
         {
@@ -556,13 +592,16 @@ public class StreetView : MonoBehaviour
     IEnumerator MoveToTarget()
     {
         // ซ่อน cursor ขณะเคลื่อนที่
-        while (Vector3.Distance(player.position, moveTargetPosition) > arriveDistance)
+        Vector3 startPosition = player.position;
+        float duration = Mathf.Max(0.1f, moveDuration);
+        float elapsed = 0f;
+
+        while (elapsed < duration)
         {
-            Vector3 nextPosition = Vector3.MoveTowards(
-                player.position,
-                moveTargetPosition,
-                currentMoveSpeed * Time.deltaTime
-            );
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            float easedT = Mathf.SmoothStep(0f, 1f, t);
+            Vector3 nextPosition = Vector3.Lerp(startPosition, moveTargetPosition, easedT);
             if (!MovePlayerKeepingFeetOnGround(nextPosition))
                 break;
             yield return null;
@@ -577,7 +616,7 @@ public class StreetView : MonoBehaviour
     void UpdateCursor()
     {
         // ซ่อน cursor ขณะเคลื่อนที่
-        if (!showCursor || cursorRenderer == null)
+        if (!showCursor || cursorRenderer == null || moveRoutine != null || hideCursorUntilPointerActivity || Input.touchCount <= 0)
         {
             if (cursorCircle != null) cursorCircle.SetActive(false);
             return;

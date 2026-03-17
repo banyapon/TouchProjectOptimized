@@ -298,14 +298,15 @@ public class SplineCreator : MonoBehaviour
         return mat;
     }
 
-    public void HighlightBranches(BranchType activeBranch, BranchType reservedBranch = BranchType.Main)
+    public void HighlightBranches(BranchType activeBranch, BranchType reservedBranch = BranchType.Main, bool highlightActiveBranch = true)
     {
         ApplyMaterialColor(mainRoadMaterial, defaultRoadColor);
         ApplyMaterialColor(straightRoadMaterial, defaultRoadColor);
         ApplyMaterialColor(leftRoadMaterial, defaultRoadColor);
         ApplyMaterialColor(rightRoadMaterial, defaultRoadColor);
 
-        HighlightBranch(activeBranch);
+        if (highlightActiveBranch)
+            HighlightBranch(activeBranch);
 
         if (reservedBranch != activeBranch)
             HighlightBranch(reservedBranch);
