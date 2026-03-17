@@ -44,11 +44,14 @@ public class DogPaddle : MonoBehaviour
     public float groundCheckStartHeight = 1.5f;
     public float groundCheckDistance = 4f;
     public int pathValidationSteps = 8;
+    public float footOffset = 0.02f;
     // --- Rigidbody ---
     private Rigidbody rb;
     private Vector3 desiredVelocity;
     private bool hasDragInput;
     private int walkableLayer = -1;
+    private CapsuleCollider capsuleCollider;
+    private CharacterController characterController;
 
     // --- Internal State ---
     enum GestureType { None, Hold, Drag, Swipe, TwoFingerRotate }
@@ -82,6 +85,8 @@ public class DogPaddle : MonoBehaviour
         rb.constraints = RigidbodyConstraints.FreezeRotation;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         walkableLayer = LayerMask.NameToLayer(walkableLayerName);
+        capsuleCollider = GetComponent<CapsuleCollider>();
+        characterController = GetComponent<CharacterController>();
 
         if (speedSlider != null)
         {
@@ -106,6 +111,8 @@ public class DogPaddle : MonoBehaviour
         {
             rb.linearVelocity = Vector3.zero;
         }
+
+        SnapToGround();
         desiredVelocity = Vector3.zero;
     }
 
@@ -418,6 +425,36 @@ public class DogPaddle : MonoBehaviour
         bool isWalkableLayer = walkableLayer >= 0 && hit.collider.gameObject.layer == walkableLayer;
         bool isRoadTag = !string.IsNullOrEmpty(roadTag) && hit.collider.CompareTag(roadTag);
         return isWalkableLayer || isRoadTag;
+    }
+
+    void SnapToGround()
+    {
+        Vector3 rayOrigin = rb.position + Vector3.up * groundCheckStartHeight;
+        if (!Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, groundCheckDistance, ~0, QueryTriggerInteraction.Ignore))
+            return;
+
+        bool isWalkableLayer = walkableLayer >= 0 && hit.collider.gameObject.layer == walkableLayer;
+        bool isRoadTag = !string.IsNullOrEmpty(roadTag) && hit.collider.CompareTag(roadTag);
+        if (!isWalkableLayer && !isRoadTag)
+            return;
+
+        float footToPivot = GetFootToPivotDistance();
+        Vector3 snappedPosition = new Vector3(rb.position.x, hit.point.y + footToPivot + footOffset, rb.position.z);
+        rb.MovePosition(snappedPosition);
+
+        Vector3 euler = transform.eulerAngles;
+        rb.MoveRotation(Quaternion.Euler(0f, euler.y, 0f));
+    }
+
+    float GetFootToPivotDistance()
+    {
+        if (characterController != null)
+            return Mathf.Max(0.01f, (characterController.height * 0.5f) - characterController.center.y);
+
+        if (capsuleCollider != null)
+            return Mathf.Max(0.01f, (capsuleCollider.height * 0.5f) - capsuleCollider.center.y);
+
+        return 0.5f;
     }
 
     Vector2 PixelsToCm(Vector2 pixels)

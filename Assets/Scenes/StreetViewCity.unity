@@ -1126,7 +1126,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 8
   modeToggle: {fileID: 641072222}
-  currentMode: 1
+  currentMode: 0
   speedSlider: {fileID: 2096295850697914498}
   moveDuration: 0.1
   maxRayDistance: 100
@@ -1146,6 +1146,8 @@ MonoBehaviour:
   cursorRadius: 0.25
   cursorColor: {r: 0, g: 1, b: 0.55724907, a: 0.9490196}
   cursorLineWidth: 0.08
+  cursorForwardOffset: 0.15
+  cursorDirectionLength: 0.35
 --- !u!1 &1400712316
 GameObject:
   m_ObjectHideFlags: 0

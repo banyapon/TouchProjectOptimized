@@ -52,6 +52,12 @@ public class DragnGo : MonoBehaviour
     [Header("Hit Circle Settings")]
     public float hitCircleRadius = 0.3f;     // รัศมีของ circle ที่จุดกระทบ
 
+    [Header("Walkable Alignment")]
+    public string walkableLayerName = "Walkable";
+    public float groundProbeHeight = 0.5f;
+    public float groundProbeDistance = 1.5f;
+    public float footOffset = 0.02f;
+
     // UI touch blocking
     private bool touchStartedOnUI = false;
 
@@ -93,6 +99,8 @@ public class DragnGo : MonoBehaviour
     // Hit circle
     private GameObject hitCircle;
     private LineRenderer circleRenderer;
+    private CharacterController playerCharacterController;
+    private CapsuleCollider playerCapsuleCollider;
 
     void Start()
     {
@@ -124,6 +132,12 @@ public class DragnGo : MonoBehaviour
         }
 
         CreateHitCircle();
+
+        if (player != null)
+        {
+            playerCharacterController = player.GetComponent<CharacterController>();
+            playerCapsuleCollider = player.GetComponent<CapsuleCollider>();
+        }
 
         if (vrCamera != null)
             targetRotation = vrCamera.transform.localRotation;
@@ -165,6 +179,7 @@ public class DragnGo : MonoBehaviour
     {
         HandleTouchInput();
         UpdateLaserPointer();
+        SnapPlayerToWalkable();
 
         // Smoothly approach the target camera rotation
         if (smoothRotation && vrCamera != null)
@@ -304,10 +319,8 @@ public class DragnGo : MonoBehaviour
             draggedDistance = Mathf.Clamp(draggedDistance + deltaDistance, 0f, effectiveDistance);
 
             Vector3 targetPosition = originalVEPosition + direction * draggedDistance;
-
-            targetPosition.y = originalVEPosition.y;
             StopMoveRoutine();
-            player.position = targetPosition;
+            MovePlayerKeepingFeetOnGround(targetPosition);
 
             // Log movement
             if (LogDataClass.Instance != null)
@@ -318,7 +331,7 @@ public class DragnGo : MonoBehaviour
         if (lockedDragAxis == DragAxis.Horizontal && Mathf.Abs(deltaX) > 0.5f)
         {
             float strafeDir = deltaX > 0f ? -1f : 1f;
-            player.position += player.right * strafeDir * Mathf.Abs(deltaX) * strafeSpeed;
+            MovePlayerKeepingFeetOnGround(player.position + player.right * strafeDir * Mathf.Abs(deltaX) * strafeSpeed);
         }
     }
 
@@ -386,7 +399,6 @@ public class DragnGo : MonoBehaviour
                     float effectiveDistance = Mathf.Max(0f, currentHitDistance - stopBeforeEnd);
                     Vector3 direction = (raycastTarget - originalVEPosition).normalized;
                     Vector3 targetPos = originalVEPosition + direction * effectiveDistance;
-                    targetPos.y = originalVEPosition.y;
 
                     StartMoveToPosition(targetPos);
 
@@ -423,7 +435,7 @@ public class DragnGo : MonoBehaviour
         if (Mathf.Abs(delta.x) <= Mathf.Abs(delta.y)) return false; // ไม่ใช่ horizontal
 
         float dir = delta.x > 0 ? -1f : 1f;
-        player.position += player.right * dir * swipeMoveDistance;
+        MovePlayerKeepingFeetOnGround(player.position + player.right * dir * swipeMoveDistance);
 
         if (LogDataClass.Instance != null)
             LogDataClass.Instance.LogMovement("dragngo", player.position, 0f, dir > 0 ? "SwipeRight" : "SwipeLeft");
@@ -481,10 +493,9 @@ public class DragnGo : MonoBehaviour
         Vector3 laserStart = player.position + Vector3.up * 1.5f;
         Vector3 laserDirection = vrCamera.transform.forward;
 
-        if (Physics.Raycast(laserStart, laserDirection, out hit, Mathf.Infinity, raycastLayers))
+        if (Physics.Raycast(laserStart, laserDirection, out hit, maxRayDistance, raycastLayers))
         {
             raycastTarget = hit.point;
-            raycastTarget.y = originalVEPosition.y;
             currentHitDistance = Vector3.Distance(originalVEPosition, raycastTarget);
             hasValidHit = true;
         }
@@ -512,7 +523,7 @@ public class DragnGo : MonoBehaviour
         laserPointer.SetPosition(0, laserStart);
 
         RaycastHit hit;
-        if (Physics.Raycast(laserStart, laserDirection, out hit, Mathf.Infinity, raycastLayers))
+        if (Physics.Raycast(laserStart, laserDirection, out hit, maxRayDistance, raycastLayers))
         {
             hasLaserHit = true;
             laserPointer.SetPosition(1, hit.point);
@@ -524,7 +535,7 @@ public class DragnGo : MonoBehaviour
         else
         {
             hasLaserHit = false;
-            laserPointer.SetPosition(1, laserStart + laserDirection * 50f);
+            laserPointer.SetPosition(1, laserStart + laserDirection * maxRayDistance);
             SetLaserColor(Color.red);
 
             if (hitCircle != null)
@@ -583,11 +594,67 @@ public class DragnGo : MonoBehaviour
     {
         while (Vector3.Distance(player.position, targetPosition) > 0.16f)
         {
-            player.position = Vector3.MoveTowards(player.position, targetPosition, moveSpeed * Time.deltaTime);
+            Vector3 nextPosition = Vector3.MoveTowards(player.position, targetPosition, moveSpeed * Time.deltaTime);
+            if (!MovePlayerKeepingFeetOnGround(nextPosition))
+                break;
             yield return null;
         }
 
-        player.position = targetPosition;
+        MovePlayerKeepingFeetOnGround(targetPosition);
         moveRoutine = null;
+    }
+
+    bool MovePlayerKeepingFeetOnGround(Vector3 targetPosition)
+    {
+        if (player == null)
+            return false;
+
+        if (TryGetWalkableHit(targetPosition, out RaycastHit hit, out float footToPivot))
+        {
+            player.position = hit.point + Vector3.up * (footToPivot + footOffset);
+            AlignPlayerToGround(hit.normal);
+            return true;
+        }
+
+        return false;
+    }
+
+    void SnapPlayerToWalkable()
+    {
+        if (player == null)
+            return;
+
+        if (TryGetWalkableHit(player.position, out RaycastHit hit, out float footToPivot))
+        {
+            player.position = hit.point + Vector3.up * (footToPivot + footOffset);
+            AlignPlayerToGround(hit.normal);
+        }
+    }
+
+    bool TryGetWalkableHit(Vector3 pivotPosition, out RaycastHit hit, out float footToPivot)
+    {
+        footToPivot = GetFootToPivotDistance();
+        int walkableLayer = LayerMask.NameToLayer(walkableLayerName);
+        int mask = walkableLayer >= 0 ? (1 << walkableLayer) : raycastLayers.value;
+        Vector3 rayOrigin = pivotPosition + Vector3.up * groundProbeHeight;
+        float rayDistance = groundProbeHeight + footToPivot + groundProbeDistance;
+        return Physics.Raycast(rayOrigin, Vector3.down, out hit, rayDistance, mask, QueryTriggerInteraction.Ignore);
+    }
+
+    float GetFootToPivotDistance()
+    {
+        if (playerCharacterController != null)
+            return Mathf.Max(0.01f, (playerCharacterController.height * 0.5f) - playerCharacterController.center.y);
+
+        if (playerCapsuleCollider != null)
+            return Mathf.Max(0.01f, (playerCapsuleCollider.height * 0.5f) - playerCapsuleCollider.center.y);
+
+        return 0.5f;
+    }
+
+    void AlignPlayerToGround(Vector3 groundNormal)
+    {
+        Vector3 euler = player.eulerAngles;
+        player.rotation = Quaternion.Euler(0f, euler.y, 0f);
     }
 }

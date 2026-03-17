@@ -52,6 +52,7 @@ public class DogPaddleSpline : MonoBehaviour
     private float currentDistance;
     private int currentLane;
     private float yRotationOffset;
+    private bool hasReservedSelection;
     private bool isTangentTurnAnimating;
     private float tangentTurnTimer;
     private Quaternion tangentTurnFrom;
@@ -99,12 +100,13 @@ public class DogPaddleSpline : MonoBehaviour
         splineCreator.Build(transform.position);
 
         activeBranch = SplineCreator.BranchType.Main;
-        currentLane = laneCount / 2;
+        currentLane = GetDefaultLaneIndex();
         currentDistance = 0f;
+        hasReservedSelection = false;
         if (tangentTurnCurve == null || tangentTurnCurve.length == 0)
             tangentTurnCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
-        splineCreator.HighlightReservedBranch(SplineCreator.BranchType.Main);
+        RefreshSplineHighlight();
         PlaceOnSpline();
     }
 
@@ -116,6 +118,8 @@ public class DogPaddleSpline : MonoBehaviour
 
     void PlaceOnSpline()
     {
+        RefreshSplineHighlight();
+
         float length = splineCreator.GetPathLength(activeBranch);
         currentDistance = Mathf.Clamp(currentDistance, 0f, length);
 
@@ -170,23 +174,47 @@ public class DogPaddleSpline : MonoBehaviour
                 StartTangentTurn(branchFwd);
             }
 
-            splineCreator.HighlightReservedBranch(activeBranch);
+            hasReservedSelection = false;
+            RefreshSplineHighlight();
         }
 
         else if (activeBranch != SplineCreator.BranchType.Main && currentDistance < 0f)
         {
             activeBranch = SplineCreator.BranchType.Main;
             currentDistance = mainLength;
+            RefreshSplineHighlight();
         }
     }
 
     SplineCreator.BranchType GetReservedBranch()
     {
+        if (laneCount <= 2)
+            return currentLane <= 0 ? SplineCreator.BranchType.Left : SplineCreator.BranchType.Right;
+
         if (currentLane <= 0)
             return SplineCreator.BranchType.Left;
         if (currentLane >= laneCount - 1)
             return SplineCreator.BranchType.Right;
         return SplineCreator.BranchType.Straight;
+    }
+
+    int GetDefaultLaneIndex()
+    {
+        return laneCount <= 2 ? 0 : laneCount / 2;
+    }
+
+    void RefreshSplineHighlight()
+    {
+        if (splineCreator == null)
+            return;
+
+        SplineCreator.BranchType reservedBranch = hasReservedSelection ? GetReservedBranch() : GetDefaultReservedBranch();
+        splineCreator.HighlightBranches(activeBranch, reservedBranch);
+    }
+
+    SplineCreator.BranchType GetDefaultReservedBranch()
+    {
+        return laneCount <= 2 ? SplineCreator.BranchType.Left : SplineCreator.BranchType.Straight;
     }
 
     // ===================================================================
@@ -368,7 +396,8 @@ public class DogPaddleSpline : MonoBehaviour
                 if (newLane != currentLane)
                 {
                     currentLane = newLane;
-                    splineCreator.HighlightReservedBranch(GetReservedBranch());
+                    hasReservedSelection = true;
+                    RefreshSplineHighlight();
 
                     if (LogDataClass.Instance != null)
                         LogDataClass.Instance.LogMovement("dogpaddle_spline", transform.position, 0f,

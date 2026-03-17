@@ -43,26 +43,40 @@ public class StreetView : MonoBehaviour
     public float swipeMinPixels = 50f;           // ระยะ pixel ขั้นต่ำ horizontal ที่ถือว่าเป็น swipe
     public float swipeMaxDuration = 0.4f;        // เวลาสูงสุดที่ถือว่าเป็น swipe (วินาที)
 
+    [Header("Walkable Grounding")]
+    public string walkableLayerName = "Walkable";
+    public float groundProbeHeight = 0.5f;
+    public float groundProbeDistance = 1.5f;
+    public float footOffset = 0.02f;
+
     [Header("Cursor Settings")]
     public bool showCursor = true;
     public float cursorRadius = 0.3f;
     public Color cursorColor = Color.cyan;
     public float cursorLineWidth = 0.05f;
+    public float cursorForwardOffset = 0.15f;
+    public float cursorDirectionLength = 0.35f;
 
     // Cursor
     private GameObject cursorCircle;
     private LineRenderer cursorRenderer;
+    private LineRenderer cursorDirectionRenderer;
 
     // Raycast hit info
     private Vector3 currentHitPoint;
     private Vector3 currentHitNormal;
     private bool hasValidHit = false;
     private float currentHitDistance = 0f;
+    private Vector3 currentCursorForward = Vector3.forward;
+    private Vector3 lastValidCursorPoint;
+    private Vector3 lastValidCursorNormal = Vector3.up;
+    private bool hasLastValidCursor;
 
     // Movement
     private Coroutine moveRoutine;
     private float currentMoveSpeed;
     private Vector3 moveTargetPosition;
+    private bool hideCursorUntilPointerActivity = false;
 
     // Touch
     private Vector2 touchStartPosition;
@@ -88,6 +102,15 @@ public class StreetView : MonoBehaviour
     private bool isOneFingerRotating = false;
     private Vector2 previousOneFingerPosition;
 
+    // Desktop mouse
+    private bool isMouseDragging = false;
+    private bool mouseDownStartedOnUI = false;
+    private bool suppressCursorUntilMouseMove = false;
+    private Vector2 mouseDownPosition;
+    private Vector2 previousMousePosition;
+    private CharacterController playerCharacterController;
+    private CapsuleCollider playerCapsuleCollider;
+
     void Start()
     {
         // เชื่อม Slider กับ baseSpeed
@@ -104,7 +127,16 @@ public class StreetView : MonoBehaviour
             modeToggle.onValueChanged.AddListener(OnModeToggleChanged);
         }
 
+        if (player != null)
+        {
+            playerCharacterController = player.GetComponent<CharacterController>();
+            playerCapsuleCollider = player.GetComponent<CapsuleCollider>();
+        }
+
+        SnapPlayerToWalkable();
+        previousMousePosition = Input.mousePosition;
         CreateCursor();
+        hideCursorUntilPointerActivity = true;
     }
 
     void OnSpeedSliderChanged(float value)
@@ -125,13 +157,44 @@ public class StreetView : MonoBehaviour
     void Update()
     {
         HandleTouchInput();
+        DetectPointerActivity();
         UpdateCursorTracking();
         UpdateCursor();
+    }
+
+    void DetectPointerActivity()
+    {
+        if (!hideCursorUntilPointerActivity)
+            return;
+
+        bool hasTouchActivity = false;
+        for (int i = 0; i < Input.touchCount; i++)
+        {
+            Touch touch = Input.GetTouch(i);
+            if (touch.phase == TouchPhase.Began)
+            {
+                hasTouchActivity = true;
+                break;
+            }
+        }
+
+        Vector2 mousePosition = Input.mousePosition;
+        bool hasMouseMove =
+            float.IsFinite(mousePosition.x) &&
+            float.IsFinite(mousePosition.y) &&
+            mousePosition != previousMousePosition;
+        bool hasMouseActivity = Input.GetMouseButtonDown(0) || hasMouseMove;
+
+        if (hasTouchActivity || hasMouseActivity)
+            hideCursorUntilPointerActivity = false;
+
+        previousMousePosition = mousePosition;
     }
 
     void UpdateCursorTracking()
     {
         if (!showCursor || vrCamera == null) return;
+        if (hideCursorUntilPointerActivity || moveRoutine != null) return;
 
         Vector2 pointerPos;
 
@@ -425,12 +488,12 @@ public class StreetView : MonoBehaviour
         if (Mathf.Abs(delta.x) <= Mathf.Abs(delta.y)) return false; // ไม่ใช่ horizontal
 
         float dir = delta.x > 0 ? 1f : -1f;
-        player.position += player.right * dir * swipeMoveDistance;
+        bool moved = MovePlayerKeepingFeetOnGround(player.position + player.right * dir * swipeMoveDistance);
 
-        if (LogDataClass.Instance != null)
+        if (moved && LogDataClass.Instance != null)
             LogDataClass.Instance.LogMovement("streetview", player.position, 0f, dir > 0 ? "SwipeRight" : "SwipeLeft");
 
-        return true;
+        return moved;
     }
 
     public void MoveForwardDefault()
@@ -442,10 +505,14 @@ public class StreetView : MonoBehaviour
         forward.Normalize();
 
         Vector3 targetPos = player.position + forward * noHitMoveDistance;
+        if (!TryGetWalkableHit(targetPos, out _, out _))
+            return;
+
         moveTargetPosition = targetPos;
 
         float distance = Vector3.Distance(player.position, moveTargetPosition);
         currentMoveSpeed = distance / Mathf.Max(0.1f, moveDuration);
+        hideCursorUntilPointerActivity = true;
 
         if (moveRoutine != null) StopCoroutine(moveRoutine);
         moveRoutine = StartCoroutine(MoveToTarget());
@@ -466,6 +533,9 @@ public class StreetView : MonoBehaviour
             currentHitPoint = hit.point;
             currentHitNormal = hit.normal;
             currentHitDistance = hit.distance;
+            lastValidCursorPoint = hit.point;
+            lastValidCursorNormal = hit.normal;
+            hasLastValidCursor = true;
         }
         else
         {
@@ -488,7 +558,6 @@ public class StreetView : MonoBehaviour
         if (Physics.Raycast(ray, out hit, maxRayDistance, groundLayer))
         {
             targetPosition = hit.point;
-            targetPosition.y = player.position.y;
         }
         else
         {
@@ -499,11 +568,15 @@ public class StreetView : MonoBehaviour
             targetPosition = player.position + direction * noHitMoveDistance;
         }
 
+        if (!TryGetWalkableHit(targetPosition, out _, out _))
+            return;
+
         moveTargetPosition = targetPosition;
 
         // คำนวณ speed จาก distance / duration → ไกลหรือใกล้ใช้เวลาเท่ากัน
         float distance = Vector3.Distance(player.position, moveTargetPosition);
         currentMoveSpeed = distance / Mathf.Max(0.1f, moveDuration);
+        hideCursorUntilPointerActivity = true;
 
         if (moveRoutine != null)
         {
@@ -519,36 +592,46 @@ public class StreetView : MonoBehaviour
     IEnumerator MoveToTarget()
     {
         // ซ่อน cursor ขณะเคลื่อนที่
-        if (cursorCircle != null) cursorCircle.SetActive(false);
+        Vector3 startPosition = player.position;
+        float duration = Mathf.Max(0.1f, moveDuration);
+        float elapsed = 0f;
 
-        while (Vector3.Distance(player.position, moveTargetPosition) > arriveDistance)
+        while (elapsed < duration)
         {
-            player.position = Vector3.MoveTowards(
-                player.position,
-                moveTargetPosition,
-                currentMoveSpeed * Time.deltaTime
-            );
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            float easedT = Mathf.SmoothStep(0f, 1f, t);
+            Vector3 nextPosition = Vector3.Lerp(startPosition, moveTargetPosition, easedT);
+            if (!MovePlayerKeepingFeetOnGround(nextPosition))
+                break;
             yield return null;
         }
 
-        player.position = moveTargetPosition;
+        MovePlayerKeepingFeetOnGround(moveTargetPosition);
         moveRoutine = null;
 
         // แสดง cursor กลับมาเมื่อถึงจุดหมาย
-        if (showCursor && cursorCircle != null) cursorCircle.SetActive(true);
     }
 
     void UpdateCursor()
     {
         // ซ่อน cursor ขณะเคลื่อนที่
-        if (!showCursor || cursorRenderer == null || moveRoutine != null)
+        if (!showCursor || cursorRenderer == null || moveRoutine != null || hideCursorUntilPointerActivity || Input.touchCount <= 0)
+        {
+            if (cursorCircle != null) cursorCircle.SetActive(false);
+            return;
+        }
+
+        if (!hasValidHit && !hasLastValidCursor)
         {
             if (cursorCircle != null) cursorCircle.SetActive(false);
             return;
         }
 
         cursorCircle.SetActive(true);
-        DrawCursor(currentHitPoint, currentHitNormal, hasValidHit);
+        Vector3 drawPoint = hasValidHit ? currentHitPoint : lastValidCursorPoint;
+        Vector3 drawNormal = hasValidHit ? currentHitNormal : lastValidCursorNormal;
+        DrawCursor(drawPoint, drawNormal, hasValidHit || hasLastValidCursor);
     }
 
     void DrawCursor(Vector3 point, Vector3 normal, bool isValidHit)
@@ -583,5 +666,59 @@ public class StreetView : MonoBehaviour
             StopCoroutine(moveRoutine);
             moveRoutine = null;
         }
+    }
+
+    bool MovePlayerKeepingFeetOnGround(Vector3 targetPosition)
+    {
+        if (player == null)
+            return false;
+
+        if (TryGetWalkableHit(targetPosition, out RaycastHit hit, out float footToPivot))
+        {
+            player.position = hit.point + hit.normal * (footToPivot + footOffset);
+            AlignPlayerToGround(hit.normal);
+            return true;
+        }
+
+        return false;
+    }
+
+    void SnapPlayerToWalkable()
+    {
+        if (player == null)
+            return;
+
+        if (TryGetWalkableHit(player.position, out RaycastHit hit, out float footToPivot))
+        {
+            player.position = hit.point + hit.normal * (footToPivot + footOffset);
+            AlignPlayerToGround(hit.normal);
+        }
+    }
+
+    bool TryGetWalkableHit(Vector3 pivotPosition, out RaycastHit hit, out float footToPivot)
+    {
+        footToPivot = GetFootToPivotDistance();
+        int walkableLayer = LayerMask.NameToLayer(walkableLayerName);
+        int mask = walkableLayer >= 0 ? (1 << walkableLayer) : groundLayer.value;
+        Vector3 rayOrigin = pivotPosition + Vector3.up * groundProbeHeight;
+        float rayDistance = groundProbeHeight + footToPivot + groundProbeDistance;
+        return Physics.Raycast(rayOrigin, Vector3.down, out hit, rayDistance, mask, QueryTriggerInteraction.Ignore);
+    }
+
+    float GetFootToPivotDistance()
+    {
+        if (playerCharacterController != null)
+            return Mathf.Max(0.01f, (playerCharacterController.height * 0.5f) - playerCharacterController.center.y);
+
+        if (playerCapsuleCollider != null)
+            return Mathf.Max(0.01f, (playerCapsuleCollider.height * 0.5f) - playerCapsuleCollider.center.y);
+
+        return 0.5f;
+    }
+
+    void AlignPlayerToGround(Vector3 groundNormal)
+    {
+        Vector3 euler = player.eulerAngles;
+        player.rotation = Quaternion.Euler(0f, euler.y, 0f);
     }
 }
