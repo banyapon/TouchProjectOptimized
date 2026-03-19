@@ -42,6 +42,9 @@ public class DogPaddleSpline : MonoBehaviour
     public int laneCount = 3;
     public float laneWidth = 1.0f;
     public float laneSwitchSpeed = 8f;
+    [Header("Current Branch Highlight")]
+    [Range(0f, 1f)] public float activeHighlightStartRatio = 0.2f;
+    [Range(0f, 1f)] public float activeHighlightEndRatio = 0.9f;
     [Header("Tangent Turn Animation")]
     public bool smoothTurnToSplineTangent = true;
     public float tangentTurnDuration = 0.2f;
@@ -208,13 +211,25 @@ public class DogPaddleSpline : MonoBehaviour
         if (splineCreator == null)
             return;
 
-        SplineCreator.BranchType reservedBranch = hasReservedSelection ? GetReservedBranch() : GetDefaultReservedBranch();
-        splineCreator.HighlightBranches(activeBranch, reservedBranch);
+        SplineCreator.BranchType reservedBranch = hasReservedSelection ? GetReservedBranch() : activeBranch;
+        splineCreator.HighlightBranches(activeBranch, reservedBranch, true);
     }
 
     SplineCreator.BranchType GetDefaultReservedBranch()
     {
         return laneCount <= 2 ? SplineCreator.BranchType.Left : SplineCreator.BranchType.Straight;
+    }
+
+    bool ShouldHighlightActiveBranch()
+    {
+        float pathLength = splineCreator.GetPathLength(activeBranch);
+        if (pathLength <= 0f)
+            return false;
+
+        float startRatio = Mathf.Min(activeHighlightStartRatio, activeHighlightEndRatio);
+        float endRatio = Mathf.Max(activeHighlightStartRatio, activeHighlightEndRatio);
+        float normalizedDistance = Mathf.Clamp01(currentDistance / pathLength);
+        return normalizedDistance >= startRatio && normalizedDistance <= endRatio;
     }
 
     // ===================================================================

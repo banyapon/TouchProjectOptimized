@@ -77,6 +77,7 @@ public class StreetView : MonoBehaviour
     private float currentMoveSpeed;
     private Vector3 moveTargetPosition;
     private bool hideCursorUntilPointerActivity = false;
+    private bool showCursorWhileTouching = false;
 
     // Touch
     private Vector2 touchStartPosition;
@@ -97,6 +98,8 @@ public class StreetView : MonoBehaviour
     // Double Tap Detection (OneFingerRotate mode)
     private float lastTapTime = -1f;
     private Vector2 lastTapPosition;
+    private float lastMoveTapTime = -1f;
+    private Vector2 lastMoveTapPosition;
 
     // One-finger rotation (OneFingerRotate mode)
     private bool isOneFingerRotating = false;
@@ -136,7 +139,6 @@ public class StreetView : MonoBehaviour
         SnapPlayerToWalkable();
         previousMousePosition = Input.mousePosition;
         CreateCursor();
-        hideCursorUntilPointerActivity = true;
     }
 
     void OnSpeedSliderChanged(float value)
@@ -171,7 +173,7 @@ public class StreetView : MonoBehaviour
         for (int i = 0; i < Input.touchCount; i++)
         {
             Touch touch = Input.GetTouch(i);
-            if (touch.phase == TouchPhase.Began)
+            if (touch.phase == TouchPhase.Began || touch.phase == TouchPhase.Moved)
             {
                 hasTouchActivity = true;
                 break;
@@ -194,7 +196,6 @@ public class StreetView : MonoBehaviour
     void UpdateCursorTracking()
     {
         if (!showCursor || vrCamera == null) return;
-        if (hideCursorUntilPointerActivity || moveRoutine != null) return;
 
         Vector2 pointerPos;
 
@@ -279,6 +280,7 @@ public class StreetView : MonoBehaviour
                         OnOneTouchEnded_TwoFingerMode(touch);
                         break;
                     case TouchPhase.Canceled:
+                        showCursorWhileTouching = false;
                         break;
                 }
             }
@@ -299,6 +301,7 @@ public class StreetView : MonoBehaviour
                         break;
                     case TouchPhase.Canceled:
                         isOneFingerRotating = false;
+                        showCursorWhileTouching = false;
                         break;
                 }
             }
@@ -313,6 +316,7 @@ public class StreetView : MonoBehaviour
             isRotating = false;
             isDraggingToRotate = false;
             isOneFingerRotating = false;
+            showCursorWhileTouching = false;
         }
     }
 
@@ -325,22 +329,36 @@ public class StreetView : MonoBehaviour
         touchStartPosition = touch.position;
         touchStartTime = Time.unscaledTime;
         isRotating = false;
+        showCursorWhileTouching = true;
 
         PerformRaycastFromScreenPosition(touch.position);
     }
 
     void OnOneTouchMovedOrStationary(Touch touch)
     {
+        showCursorWhileTouching = true;
         PerformRaycastFromScreenPosition(touch.position);
     }
 
     void OnOneTouchEnded_TwoFingerMode(Touch touch)
     {
+        showCursorWhileTouching = false;
+
         // Street View style: Single Tap เคลื่อนที่ไปจุดที่แตะ
         float dragDistance = Vector2.Distance(touch.position, touchStartPosition);
         if (dragDistance <= tapDragThreshold)
         {
-            StartMovement(touch.position);
+            float currentTime = Time.unscaledTime;
+            bool isRepeatedTap =
+                lastMoveTapTime > 0f &&
+                (currentTime - lastMoveTapTime) <= doubleTapMaxInterval &&
+                Vector2.Distance(touch.position, lastMoveTapPosition) <= tapDragThreshold;
+
+            if (!isRepeatedTap && StartMovement(touch.position))
+            {
+                lastMoveTapTime = currentTime;
+                lastMoveTapPosition = touch.position;
+            }
         }
         else
         {
@@ -359,12 +377,15 @@ public class StreetView : MonoBehaviour
         touchStartTime = Time.unscaledTime;
         previousOneFingerPosition = touch.position;
         isOneFingerRotating = false;
+        showCursorWhileTouching = true;
 
         PerformRaycastFromScreenPosition(touch.position);
     }
 
     void OnOneTouchMoved_OneFingerRotateMode(Touch touch)
     {
+        showCursorWhileTouching = true;
+
         // ตรวจว่าลากเกิน threshold → เริ่มหมุน
         float dragDistance = Vector2.Distance(touch.position, touchStartPosition);
         if (dragDistance > dragThreshold || isOneFingerRotating)
@@ -397,6 +418,8 @@ public class StreetView : MonoBehaviour
 
     void OnOneTouchEnded_OneFingerRotateMode(Touch touch)
     {
+        showCursorWhileTouching = false;
+
         // ถ้าไม่ได้ลาก (tap) → ตรวจ Double Tap
         float dragDistance = Vector2.Distance(touch.position, touchStartPosition);
         if (dragDistance <= tapDragThreshold && !isOneFingerRotating)
@@ -546,9 +569,9 @@ public class StreetView : MonoBehaviour
         }
     }
 
-    void StartMovement(Vector2 screenPosition)
+    bool StartMovement(Vector2 screenPosition)
     {
-        if (vrCamera == null || player == null) return;
+        if (vrCamera == null || player == null) return false;
 
         Ray ray = vrCamera.ScreenPointToRay(screenPosition);
         RaycastHit hit;
@@ -569,7 +592,7 @@ public class StreetView : MonoBehaviour
         }
 
         if (!TryGetWalkableHit(targetPosition, out _, out _))
-            return;
+            return false;
 
         moveTargetPosition = targetPosition;
 
@@ -587,6 +610,8 @@ public class StreetView : MonoBehaviour
         // Log movement
         if (LogDataClass.Instance != null)
             LogDataClass.Instance.LogMovement("streetview", moveTargetPosition, currentMoveSpeed, "Tap");
+
+        return true;
     }
 
     IEnumerator MoveToTarget()
@@ -616,7 +641,7 @@ public class StreetView : MonoBehaviour
     void UpdateCursor()
     {
         // ซ่อน cursor ขณะเคลื่อนที่
-        if (!showCursor || cursorRenderer == null || moveRoutine != null || hideCursorUntilPointerActivity || Input.touchCount <= 0)
+        if (!showCursor || cursorRenderer == null || moveRoutine != null || !showCursorWhileTouching)
         {
             if (cursorCircle != null) cursorCircle.SetActive(false);
             return;

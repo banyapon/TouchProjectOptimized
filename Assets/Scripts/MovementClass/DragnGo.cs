@@ -51,6 +51,8 @@ public class DragnGo : MonoBehaviour
 
     [Header("Hit Circle Settings")]
     public float hitCircleRadius = 0.3f;     // รัศมีของ circle ที่จุดกระทบ
+    public Color laserIdleColor = new Color(1f, 1f, 1f, 0.35f);
+    public Color laserHitColor = new Color(1f, 1f, 1f, 1f);
 
     [Header("Walkable Alignment")]
     public string walkableLayerName = "Walkable";
@@ -118,7 +120,7 @@ public class DragnGo : MonoBehaviour
             modeToggle.onValueChanged.AddListener(OnModeToggleChanged);
         }
 
-        // ตั้งสี laser เริ่มต้นเป็นแดง ผ่าน Material
+        // ตั้งสี laser เริ่มต้นเป็นขาวจาง ผ่าน Material
         if (laserPointer != null)
         {
             // vertex color เป็น white เพื่อไม่ให้ tint ทับ material color
@@ -128,7 +130,7 @@ public class DragnGo : MonoBehaviour
             laserPointer.startWidth *= 0.5f;
             laserPointer.endWidth   *= 0.5f;
 
-            SetLaserColor(Color.red);
+            SetLaserColor(laserIdleColor);
         }
 
         CreateHitCircle();
@@ -527,7 +529,7 @@ public class DragnGo : MonoBehaviour
         {
             hasLaserHit = true;
             laserPointer.SetPosition(1, hit.point);
-            SetLaserColor(Color.white);
+            SetLaserColor(laserHitColor);
 
             Vector3 stopPoint = laserStart + laserDirection * Mathf.Max(0f, hit.distance - stopBeforeEnd);
             //  DrawHitCircle(stopPoint, hit.normal);
@@ -536,7 +538,7 @@ public class DragnGo : MonoBehaviour
         {
             hasLaserHit = false;
             laserPointer.SetPosition(1, laserStart + laserDirection * maxRayDistance);
-            SetLaserColor(Color.red);
+            SetLaserColor(laserIdleColor);
 
             if (hitCircle != null)
                 hitCircle.SetActive(false);

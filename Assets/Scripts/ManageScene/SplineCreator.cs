@@ -21,9 +21,11 @@ public class SplineCreator : MonoBehaviour
 
     [Header("Road Visual")]
     public float roadWidth = 3f;
+    public float roadVerticalOffset = -0.01f;
     public Material roadMaterial;
-    public Color defaultRoadColor = Color.red;
-    public Color reservedRoadColor = Color.white;
+    public Color defaultRoadColor = Color.white;
+    public Color activeRoadColor = Color.white;
+    public Color reservedRoadColor = new Color(0.82f, 0.82f, 0.82f, 1f);
 
     // --- Path data ---
     private Vector3[] mainPoints;
@@ -170,7 +172,7 @@ public class SplineCreator : MonoBehaviour
 
         roadObject = new GameObject("SplineRoad");
         roadObject.transform.SetParent(transform);
-        roadObject.transform.position = Vector3.zero;
+        roadObject.transform.localPosition = new Vector3(0f, roadVerticalOffset, 0f);
         roadObject.transform.rotation = Quaternion.identity;
 
         MeshFilter mf = roadObject.AddComponent<MeshFilter>();
@@ -218,7 +220,7 @@ public class SplineCreator : MonoBehaviour
         leftRoadMaterial = CreateOrUseMaterial(defaultRoadColor);
         rightRoadMaterial = CreateOrUseMaterial(defaultRoadColor);
         roadRenderer.materials = new Material[] { mainRoadMaterial, straightRoadMaterial, leftRoadMaterial, rightRoadMaterial };
-        HighlightBranches(BranchType.Main);
+        HighlightBranches(BranchType.Main, BranchType.Main, false);
     }
 
     void AddRoadStrip(Vector3[] pts, Vector3 right, float width,
@@ -306,27 +308,27 @@ public class SplineCreator : MonoBehaviour
         ApplyMaterialColor(rightRoadMaterial, defaultRoadColor);
 
         if (highlightActiveBranch)
-            HighlightBranch(activeBranch);
+            HighlightBranch(activeBranch, activeRoadColor);
 
         if (reservedBranch != activeBranch)
-            HighlightBranch(reservedBranch);
+            HighlightBranch(reservedBranch, reservedRoadColor);
     }
 
-    void HighlightBranch(BranchType branch)
+    void HighlightBranch(BranchType branch, Color color)
     {
         switch (branch)
         {
             case BranchType.Main:
-                ApplyMaterialColor(mainRoadMaterial, reservedRoadColor);
+                ApplyMaterialColor(mainRoadMaterial, color);
                 break;
             case BranchType.Left:
-                ApplyMaterialColor(leftRoadMaterial, reservedRoadColor);
+                ApplyMaterialColor(leftRoadMaterial, color);
                 break;
             case BranchType.Right:
-                ApplyMaterialColor(rightRoadMaterial, reservedRoadColor);
+                ApplyMaterialColor(rightRoadMaterial, color);
                 break;
             case BranchType.Straight:
-                ApplyMaterialColor(straightRoadMaterial, reservedRoadColor);
+                ApplyMaterialColor(straightRoadMaterial, color);
                 break;
         }
     }

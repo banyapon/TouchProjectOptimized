@@ -561,8 +561,10 @@ MonoBehaviour:
   rightBranchAngle: 45
   rightBranchLength: 12
   roadWidth: 0.1
+  roadVerticalOffset: -0.01
   roadMaterial: {fileID: 2100000, guid: 46b81c95ac8b799469275c769ba58252, type: 2}
-  defaultRoadColor: {r: 1, g: 0, b: 0, a: 1}
+  defaultRoadColor: {r: 0.335849, g: 0.335849, b: 0.335849, a: 0.32941177}
+  activeRoadColor: {r: 1, g: 1, b: 1, a: 1}
   reservedRoadColor: {r: 1, g: 1, b: 1, a: 1}
 --- !u!4 &1078082864
 Transform:
@@ -785,6 +787,8 @@ MonoBehaviour:
   laneCount: 3
   laneWidth: 1
   laneSwitchSpeed: 8
+  activeHighlightStartRatio: 0.2
+  activeHighlightEndRatio: 0.9
   smoothTurnToSplineTangent: 1
   tangentTurnDuration: 0.2
   tangentTurnCurve:
